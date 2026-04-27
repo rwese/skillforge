@@ -63,11 +63,15 @@ func runRepoAdd(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("repository %q already cached (use 'repo update' to refresh)", name)
 	}
 
-	// Clone
-	fmt.Printf("Cloning %s (branch: %s)...\n", url, branchFlag)
+	// Clone with spinner
+	spinner := NewSpinner(fmt.Sprintf("Cloning %s (branch: %s)...", url, branchFlag))
+	spinner.Start()
 	if err := cache.Clone(url, branchFlag); err != nil {
+		spinner.Stop()
 		return fmt.Errorf("failed to clone: %w", err)
 	}
+	spinner.Stop()
+	fmt.Printf("✓ Cloned %s\n", url)
 
 	// Get commit
 	commit, err := cache.GetCommit(name)
@@ -219,11 +223,13 @@ func runRepoUpdate(cmd *cobra.Command, args []string) error {
 
 		oldCommit, _ := cache.GetCommit(name)
 
-		fmt.Printf("Updating %s...\n", name)
+		spinner := NewSpinner(fmt.Sprintf("Updating %s", name))
+		spinner.Start()
 		if err := cache.Pull(name); err != nil {
 			// Try fetch + reset if pull fails
 			cache.Fetch(name)
 		}
+		spinner.Stop()
 
 		newCommit, _ := cache.GetCommit(name)
 

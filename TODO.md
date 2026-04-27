@@ -35,7 +35,7 @@
 
 ## Phase 2: Polish
 - [x] JSON output for all list commands
-- [ ] Progress indicators for long operations
+- [x] Progress indicators for long operations
 - [x] Completions (bash, zsh, fish, powershell)
 
 ## Phase 3: Future (Deferred)
