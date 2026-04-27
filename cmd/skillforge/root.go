@@ -43,6 +43,9 @@ func init() {
 	rootCmd.PersistentFlags().BoolVarP(&globalFlag, "global", "g", false, "Use global config only")
 	rootCmd.PersistentFlags().BoolVarP(&localFlag, "local", "l", false, "Use local config only")
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "Config file path")
+
+	// Add shell completion command
+	rootCmd.AddCommand(completionCmd)
 }
 
 func initConfig() {

@@ -35,6 +35,7 @@ var targetFlag string
 func init() {
 	skillInstallCmd.Flags().StringVarP(&targetFlag, "target", "t", "", "Target agent (default: all enabled)")
 	skillListCmd.Flags().StringVarP(&targetFlag, "target", "t", "", "Filter by target")
+	skillListCmd.Flags().StringVarP(&formatFlag, "format", "f", "text", "Output format: text, json")
 	skillRemoveCmd.Flags().StringVarP(&targetFlag, "target", "t", "", "Target agent (default: all)")
 }
 
@@ -147,9 +148,8 @@ func runSkillList(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	fmt.Println("Installed Skills:")
+	var allSkills []SkillOutput
 
-	hasOutput := false
 	for name, target := range cfg.Targets {
 		if targetFlag != "" && targetFlag != name {
 			continue
@@ -163,25 +163,44 @@ func runSkillList(cmd *cobra.Command, args []string) error {
 			continue
 		}
 
-		if len(skills) == 0 {
-			continue
-		}
-
-		hasOutput = true
-		fmt.Printf("  %s/\n", name)
 		for _, skill := range skills {
 			commit := skill.Grimoire.Commit
 			if len(commit) > 7 {
 				commit = commit[:7]
 			}
-			fmt.Printf("    ├─ %s  @ %s\n", skill.Name, commit)
+			allSkills = append(allSkills, SkillOutput{
+				Name:   skill.Name,
+				Commit: commit,
+				Target: name,
+			})
 		}
 	}
 
-	if !hasOutput {
-		fmt.Println("  No skills installed.")
+	if parseFormat(formatFlag) == formatJSON {
+		return printJSON(allSkills)
 	}
 
+	if len(allSkills) == 0 {
+		fmt.Println("No skills installed.")
+		return nil
+	}
+
+	fmt.Println("Installed Skills:")
+	// Group by target
+	targetSkills := make(map[string][]SkillOutput)
+	for _, s := range allSkills {
+		targetSkills[s.Target] = append(targetSkills[s.Target], s)
+	}
+	for target, skills := range targetSkills {
+		fmt.Printf("  %s/\n", target)
+		for i, skill := range skills {
+			prefix := "    ├─ "
+			if i == len(skills)-1 {
+				prefix = "    └─ "
+			}
+			fmt.Printf("%s%s  @ %s\n", prefix, skill.Name, skill.Commit)
+		}
+	}
 	return nil
 }
 
@@ -274,6 +293,22 @@ func runSkillSearch(cmd *cobra.Command, args []string) error {
 	}
 
 	results := search.SearchAll(skillSets, query)
+
+	if parseFormat(formatFlag) == formatJSON {
+		skillOutputs := make([]SkillOutput, len(results))
+		for i, s := range results {
+			skillOutputs[i] = SkillOutput{
+				Name:        s.Name,
+				Description: s.Description,
+				Source:      s.Source,
+			}
+		}
+		return printJSON(SearchResultOutput{
+			Query:   query,
+			Results: skillOutputs,
+			Count:   len(results),
+		})
+	}
 
 	if len(results) == 0 {
 		fmt.Printf("No skills found matching %q\n", query)

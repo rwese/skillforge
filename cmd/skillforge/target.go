@@ -39,8 +39,24 @@ func runTargetList(cmd *cobra.Command, args []string) error {
 	}
 
 	if len(cfg.Targets) == 0 {
-		fmt.Println("No targets configured.")
+		if parseFormat(formatFlag) == formatJSON {
+			printJSON([]TargetOutput{})
+		} else {
+			fmt.Println("No targets configured.")
+		}
 		return nil
+	}
+
+	if parseFormat(formatFlag) == formatJSON {
+		var targets []TargetOutput
+		for name, target := range cfg.Targets {
+			targets = append(targets, TargetOutput{
+				Name:    name,
+				Path:    target.Path,
+				Enabled: target.Enabled,
+			})
+		}
+		return printJSON(targets)
 	}
 
 	fmt.Println("Configured Targets:")
@@ -52,6 +68,12 @@ func runTargetList(cmd *cobra.Command, args []string) error {
 		fmt.Printf("  %s  %s  (%s)\n", name, config.ContractPath(target.Path), status)
 	}
 	return nil
+}
+
+var formatFlag string
+
+func init() {
+	targetListCmd.Flags().StringVarP(&formatFlag, "format", "f", "text", "Output format: text, json")
 }
 
 var targetAddCmd = &cobra.Command{
@@ -85,7 +107,20 @@ func runTargetAdd(cmd *cobra.Command, args []string) error {
 		Enabled: enableFlag,
 	}
 
-	return saveConfig(cfg)
+	if err := saveConfig(cfg); err != nil {
+		return err
+	}
+
+	if parseFormat(formatFlag) == formatJSON {
+		return printJSON(TargetOutput{
+			Name:    name,
+			Path:    path,
+			Enabled: enableFlag,
+		})
+	}
+
+	fmt.Printf("✓ Added target %s\n", name)
+	return nil
 }
 
 var targetRemoveCmd = &cobra.Command{
@@ -108,7 +143,16 @@ func runTargetRemove(cmd *cobra.Command, args []string) error {
 	}
 
 	delete(cfg.Targets, name)
-	return saveConfig(cfg)
+	if err := saveConfig(cfg); err != nil {
+		return err
+	}
+
+	if parseFormat(formatFlag) == formatJSON {
+		return printJSON(map[string]string{"removed": name})
+	}
+
+	fmt.Printf("✓ Removed target %s\n", name)
+	return nil
 }
 
 var targetEnableCmd = &cobra.Command{
@@ -133,7 +177,21 @@ func runTargetEnable(cmd *cobra.Command, args []string) error {
 
 	target.Enabled = true
 	cfg.Targets[name] = target
-	return saveConfig(cfg)
+
+	if err := saveConfig(cfg); err != nil {
+		return err
+	}
+
+	if parseFormat(formatFlag) == formatJSON {
+		return printJSON(TargetOutput{
+			Name:    name,
+			Path:    target.Path,
+			Enabled: true,
+		})
+	}
+
+	fmt.Printf("✓ Enabled target %s\n", name)
+	return nil
 }
 
 var targetDisableCmd = &cobra.Command{
@@ -158,7 +216,21 @@ func runTargetDisable(cmd *cobra.Command, args []string) error {
 
 	target.Enabled = false
 	cfg.Targets[name] = target
-	return saveConfig(cfg)
+
+	if err := saveConfig(cfg); err != nil {
+		return err
+	}
+
+	if parseFormat(formatFlag) == formatJSON {
+		return printJSON(TargetOutput{
+			Name:    name,
+			Path:    target.Path,
+			Enabled: false,
+		})
+	}
+
+	fmt.Printf("✓ Disabled target %s\n", name)
+	return nil
 }
 
 func loadConfig() (*config.Config, error) {

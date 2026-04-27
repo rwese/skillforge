@@ -33,6 +33,7 @@ var branchFlag string
 
 func init() {
 	repoAddCmd.Flags().StringVarP(&branchFlag, "branch", "b", "main", "Branch to track")
+	repoListCmd.Flags().StringVarP(&formatFlag, "format", "f", "text", "Output format: text, json")
 }
 
 var repoAddCmd = &cobra.Command{
@@ -111,8 +112,26 @@ func runRepoList(cmd *cobra.Command, args []string) error {
 	cache := repo.NewCache(config.ExpandPath(cfg.Cache.Path))
 
 	if len(cfg.Repos) == 0 {
+		if parseFormat(formatFlag) == formatJSON {
+			return printJSON([]RepoOutput{})
+		}
 		fmt.Println("No repositories cached.")
 		return nil
+	}
+
+	if parseFormat(formatFlag) == formatJSON {
+		var repos []RepoOutput
+		for name, info := range cfg.Repos {
+			skills, _ := repo.DiscoverSkills(cache.PathFor(name), info.URL)
+			repos = append(repos, RepoOutput{
+				Name:       name,
+				URL:        info.URL,
+				Branch:     info.Branch,
+				SkillCount: len(skills),
+				Updated:    info.Updated,
+			})
+		}
+		return printJSON(repos)
 	}
 
 	fmt.Println("Cached Repositories:")

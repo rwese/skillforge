@@ -5,13 +5,13 @@
 ### Project Setup
 - [x] Initialize Go module
 - [x] Create directory structure
-- [x] Add cobra + viper dependencies
+- [x] Add cobra dependencies
 - [x] Create root command with flags
 
 ### Config System
 - [x] Config loading/writing (TOML)
 - [x] Scope detection (cwd/git-root)
-- [ ] Default config generation
+- [x] Default config generation
 
 ### Target Management
 - [x] `target list` command
@@ -34,9 +34,9 @@
 - [x] `skill update` command (check + apply)
 
 ## Phase 2: Polish
-- [ ] JSON output for all commands
-- [ ] Progress indicators
-- [ ] Completions (bash, zsh, fish)
+- [x] JSON output for all list commands
+- [ ] Progress indicators for long operations
+- [x] Completions (bash, zsh, fish, powershell)
 
 ## Phase 3: Future (Deferred)
 - [ ] Interactive TUI
