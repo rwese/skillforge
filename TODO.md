@@ -1,44 +1,27 @@
 # skillforge-ng TODO
 
-## Phase 1: Core MVP
-
-### Project Setup
+## Phase 1: Core MVP ✅
 - [x] Initialize Go module
 - [x] Create directory structure
 - [x] Add cobra dependencies
 - [x] Create root command with flags
-
-### Config System
 - [x] Config loading/writing (TOML)
 - [x] Scope detection (cwd/git-root)
-- [x] Default config generation
+- [x] Target management (add, list, remove, enable, disable)
+- [x] Repo management (add, list, remove, update)
+- [x] Skill management (install, list, remove, search, update)
+- [x] Grimoire metadata for installed skills
+- [x] Simple keyword search
 
-### Target Management
-- [x] `target list` command
-- [x] `target add` command
-- [x] `target remove` command
-- [x] `target enable` command
-- [x] `target disable` command
-
-### Repo Management
-- [x] `repo add` command
-- [x] `repo list` command
-- [x] `repo remove` command
-- [x] `repo update` command
-
-### Skill Management
-- [x] `skill install` command
-- [x] `skill list` command
-- [x] `skill remove` command
-- [x] `skill search` command
-- [x] `skill update` command (check + apply)
-
-## Phase 2: Polish
+## Phase 2: Polish ✅
 - [x] JSON output for all list commands
-- [x] Progress indicators for long operations
+- [x] Progress indicators (spinners)
 - [x] Completions (bash, zsh, fish, powershell)
 
-## Phase 3: Future (Deferred)
+## Phase 3: Future
+See `docs/prds/skillforge-ng-v2/README.md`
+
 - [ ] Interactive TUI
 - [ ] Suggest command
 - [ ] Dirty state detection
+- [ ] Doctor command
