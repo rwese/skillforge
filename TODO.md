@@ -1,5 +1,41 @@
 # skillforge-ng TODO
 
+## v1.2 - Usability Improvements ✓ (in progress)
+See: [Usability Improvements PRD](./docs/prds/skillforge-usability-improvements/README.md)
+
+### Phase 1: Config Merge Fix ✓
+- [x] Write failing unit tests for config merging
+- [x] Fix `config.Load()` to merge global + local
+- [x] Fix `config.Save()` to preserve all scopes
+- [x] Verify all tests pass
+
+### Phase 2: Onboarding Hints ✓
+- [x] Create hint formatting function (hints.go)
+- [x] Add hints to `skill install` errors
+- [x] Add hints to `skill search` errors
+- [x] Add hints to `repo` command errors
+- [x] Add hints to `target` command errors
+
+### Phase 3: Output Improvements ✓
+- [x] Add lipgloss dependency
+- [x] Create `color.go` with color definitions
+- [x] Create `output.go` with formatting functions
+- [x] Implement color auto-detection
+- [x] Update `skill list` with table/compact/json
+- [x] Update `target list` with table/compact/json
+- [x] Update `repo list` with table/compact/json
+- [x] Implement auto-compact for pipes
+
+### Phase 4: Integration Tests ✓ (pending)
+- [ ] Set up integration test environment (temp cwd + local config)
+- [ ] Test full `skill install` flow
+- [ ] Test `skill remove` flow
+- [ ] Test `target add/list/remove` cycle
+- [ ] Test scope merging with temp directories
+- [ ] Test output formats (text/table/json/compact)
+
+---
+
 ## v1.1 - Completed ✓
 
 See: [Stability & Quality PRD](./docs/prds/skillforge-ng-stability-quality/README.md)
@@ -52,3 +88,4 @@ See: [v2 PRD](./docs/prds/skillforge-ng-v2/README.md)
 | v2 PRD | `docs/prds/skillforge-ng-v2/README.md` |
 | v1.1 PRD | `docs/prds/skillforge-ng-stability-quality/README.md` |
 | Documentation PRD | `docs/prds/skillforge-ng-documentation/README.md` |
+| Usability PRD | `docs/prds/skillforge-usability-improvements/README.md` |

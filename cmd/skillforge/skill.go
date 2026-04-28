@@ -83,6 +83,7 @@ func runSkillInstall(cmd *cobra.Command, args []string) error {
 	}
 
 	if targetSkill == nil {
+		PrintHint(HintRepoNotCached)
 		return fmt.Errorf("skill %q not found in any cached repository", skillName)
 	}
 
@@ -90,7 +91,9 @@ func runSkillInstall(cmd *cobra.Command, args []string) error {
 	targets := getTargetsToInstall(cfg, targetFlag)
 
 	if len(targets) == 0 {
-		return fmt.Errorf("no enabled targets found")
+		err := fmt.Errorf("no enabled targets found")
+		PrintHint(HintNoTargets)
+		return err
 	}
 
 	// Dry-run mode
@@ -197,7 +200,9 @@ func runSkillList(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	if parseFormat(formatFlag) == formatJSON {
+	fmtmt := parseFormat(formatFlag)
+
+	if fmtmt == formatJSON {
 		return printJSON(allSkills)
 	}
 
@@ -206,22 +211,13 @@ func runSkillList(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	fmt.Println("Installed Skills:")
-	// Group by target
-	targetSkills := make(map[string][]SkillOutput)
-	for _, s := range allSkills {
-		targetSkills[s.Target] = append(targetSkills[s.Target], s)
+	if fmtmt == formatCompact {
+		fmt.Println(formatSkillCompact(allSkills))
+		return nil
 	}
-	for target, skills := range targetSkills {
-		fmt.Printf("  %s/\n", target)
-		for i, skill := range skills {
-			prefix := "    ├─ "
-			if i == len(skills)-1 {
-				prefix = "    └─ "
-			}
-			fmt.Printf("%s%s  @ %s\n", prefix, skill.Name, skill.Commit)
-		}
-	}
+
+	// Default: table format
+	fmt.Println(formatSkillTable(allSkills))
 	return nil
 }
 
@@ -267,6 +263,7 @@ func runSkillRemove(cmd *cobra.Command, args []string) error {
 	}
 
 	if !removed {
+		PrintHint(HintSkillNotInstalled)
 		return fmt.Errorf("skill %q not found in any target", skillName)
 	}
 
@@ -341,6 +338,7 @@ func runSkillSearch(cmd *cobra.Command, args []string) error {
 
 	if len(results) == 0 {
 		fmt.Printf("No skills found matching %q\n", query)
+		PrintHint(HintSearchNoResults)
 		return nil
 	}
 

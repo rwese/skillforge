@@ -60,6 +60,7 @@ func runRepoAdd(cmd *cobra.Command, args []string) error {
 
 	// Check if already cached
 	if cache.Exists(name) {
+		PrintHint(HintRepoExists)
 		return fmt.Errorf("repository %q already cached (use 'repo update' to refresh)", name)
 	}
 
@@ -117,38 +118,41 @@ func runRepoList(cmd *cobra.Command, args []string) error {
 
 	cache := repo.NewCache(config.ExpandPath(cfg.Cache.Path))
 
-	if len(cfg.Repos) == 0 {
+	// Collect repos
+	var repos []RepoOutput
+	for name, info := range cfg.Repos {
+		skills, _ := repo.DiscoverSkills(cache.PathFor(name), info.URL)
+		repos = append(repos, RepoOutput{
+			Name:       name,
+			URL:        info.URL,
+			Branch:     info.Branch,
+			SkillCount: len(skills),
+			Updated:    info.Updated,
+		})
+	}
+
+	if len(repos) == 0 {
 		if parseFormat(formatFlag) == formatJSON {
 			return printJSON([]RepoOutput{})
 		}
 		fmt.Println("No repositories cached.")
+		PrintHint(HintNoRepos)
 		return nil
 	}
 
-	if parseFormat(formatFlag) == formatJSON {
-		var repos []RepoOutput
-		for name, info := range cfg.Repos {
-			skills, _ := repo.DiscoverSkills(cache.PathFor(name), info.URL)
-			repos = append(repos, RepoOutput{
-				Name:       name,
-				URL:        info.URL,
-				Branch:     info.Branch,
-				SkillCount: len(skills),
-				Updated:    info.Updated,
-			})
-		}
+	fmtmt := parseFormat(formatFlag)
+
+	if fmtmt == formatJSON {
 		return printJSON(repos)
 	}
 
-	fmt.Println("Cached Repositories:")
-	for name, info := range cfg.Repos {
-		skills, _ := repo.DiscoverSkills(cache.PathFor(name), info.URL)
-		updated := "unknown"
-		if t, err := cache.GetUpdated(name); err == nil {
-			updated = formatDuration(time.Since(t))
-		}
-		fmt.Printf("  ✓ %s  (%d skills, updated %s)\n", name, len(skills), updated)
+	if fmtmt == formatCompact {
+		fmt.Println(formatRepoCompact(repos))
+		return nil
 	}
+
+	// Default: table format
+	fmt.Println(formatRepoTable(repos))
 	return nil
 }
 
@@ -168,6 +172,7 @@ func runRepoRemove(cmd *cobra.Command, args []string) error {
 
 	info, exists := cfg.Repos[name]
 	if !exists {
+		PrintHint(HintRepoNotFound)
 		return fmt.Errorf("repository %q not found", name)
 	}
 
@@ -220,6 +225,7 @@ func runRepoUpdate(cmd *cobra.Command, args []string) error {
 	if len(args) > 0 {
 		name := args[0]
 		if _, exists := cfg.Repos[name]; !exists {
+			PrintHint(HintRepoNotFound)
 			return fmt.Errorf("repository %q not found", name)
 		}
 		reposToUpdate = map[string]config.RepoInfo{name: cfg.Repos[name]}

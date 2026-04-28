@@ -290,3 +290,495 @@ func TestScopeConstants(t *testing.T) {
 		})
 	}
 }
+
+// --- Config Merge Tests ---
+
+func TestLoad_GlobalOnly(t *testing.T) {
+	tmpDir := t.TempDir()
+	globalPath := filepath.Join(tmpDir, "global.toml")
+
+	// Write global config
+	globalCfg := `cache.path = "/global/cache"
+
+[targets.pi]
+path = "/global/pi"
+enabled = true
+`
+	if err := os.WriteFile(globalPath, []byte(globalCfg), 0644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	loader := &Loader{
+		scope:      ScopeAuto,
+		globalPath: globalPath,
+	}
+
+	cfg, err := loader.Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if cfg.Cache.Path != "/global/cache" {
+		t.Errorf("Cache.Path = %q, want %q", cfg.Cache.Path, "/global/cache")
+	}
+
+	pi, ok := cfg.Targets["pi"]
+	if !ok {
+		t.Fatal("Expected target 'pi' not found")
+	}
+	if pi.Path != "/global/pi" {
+		t.Errorf("pi.Path = %q, want %q", pi.Path, "/global/pi")
+	}
+	if !pi.Enabled {
+		t.Error("pi.Enabled = false, want true")
+	}
+}
+
+func TestLoad_LocalOnly(t *testing.T) {
+	tmpDir := t.TempDir()
+	localDir := filepath.Join(tmpDir, ".skillforge")
+	if err := os.MkdirAll(localDir, 0755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	localPath := filepath.Join(localDir, "config.toml")
+
+	// Write local config
+	localCfg := `cache.path = "/local/cache"
+
+[targets.local]
+path = "/local/skills"
+enabled = true
+`
+	if err := os.WriteFile(localPath, []byte(localCfg), 0644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	// Change to tmpDir so DetectLocalPath finds it
+	oldCwd, _ := os.Getwd()
+	defer os.Chdir(oldCwd)
+	os.Chdir(tmpDir)
+
+	loader := &Loader{
+		scope:      ScopeAuto,
+		globalPath: filepath.Join(tmpDir, "global.toml"), // doesn't exist
+	}
+
+	cfg, err := loader.Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if cfg.Cache.Path != "/local/cache" {
+		t.Errorf("Cache.Path = %q, want %q", cfg.Cache.Path, "/local/cache")
+	}
+
+	local, ok := cfg.Targets["local"]
+	if !ok {
+		t.Fatal("Expected target 'local' not found")
+	}
+	if local.Path != "/local/skills" {
+		t.Errorf("local.Path = %q, want %q", local.Path, "/local/skills")
+	}
+}
+
+func TestLoad_Neither(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	loader := &Loader{
+		scope:      ScopeAuto,
+		globalPath: filepath.Join(tmpDir, "global.toml"), // doesn't exist
+	}
+
+	// Change to tmpDir so DetectLocalPath won't find anything
+	oldCwd, _ := os.Getwd()
+	defer os.Chdir(oldCwd)
+	os.Chdir(tmpDir)
+
+	cfg, err := loader.Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	// Should use defaults
+	home, _ := os.UserHomeDir()
+	expectedCache := filepath.Join(home, ".cache", "skillforge", "repos")
+	if cfg.Cache.Path != expectedCache {
+		t.Errorf("Cache.Path = %q, want default %q", cfg.Cache.Path, expectedCache)
+	}
+
+	if len(cfg.Targets) != 0 {
+		t.Errorf("Targets count = %d, want 0", len(cfg.Targets))
+	}
+}
+
+func TestLoad_BothMerge(t *testing.T) {
+	tmpDir := t.TempDir()
+	globalPath := filepath.Join(tmpDir, "global.toml")
+	localDir := filepath.Join(tmpDir, ".skillforge")
+	if err := os.MkdirAll(localDir, 0755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	localPath := filepath.Join(localDir, "config.toml")
+
+	// Write global config
+	globalCfg := `cache.path = "/global/cache"
+
+[targets.pi]
+path = "/global/pi"
+enabled = true
+
+[targets.global-only]
+path = "/global/only"
+enabled = true
+
+[repos.grimoire]
+url = "https://github.com/rwese/agents-grimoire"
+branch = "main"
+updated = "2026-04-28"
+`
+	if err := os.WriteFile(globalPath, []byte(globalCfg), 0644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	// Write local config
+	localCfg := `cache.path = "/local/cache"
+
+[targets.local]
+path = "/local/skills"
+enabled = true
+
+[repos.local-repo]
+url = "https://github.com/test/local"
+branch = "develop"
+updated = "2026-04-27"
+`
+	if err := os.WriteFile(localPath, []byte(localCfg), 0644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	// Change to tmpDir so DetectLocalPath finds it
+	oldCwd, _ := os.Getwd()
+	defer os.Chdir(oldCwd)
+	os.Chdir(tmpDir)
+
+	loader := &Loader{
+		scope:      ScopeAuto,
+		globalPath: globalPath,
+	}
+
+	cfg, err := loader.Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	// Local should override global cache.path
+	if cfg.Cache.Path != "/local/cache" {
+		t.Errorf("Cache.Path = %q, want %q (local override)", cfg.Cache.Path, "/local/cache")
+	}
+
+	// Should have global-only target
+	if _, ok := cfg.Targets["global-only"]; !ok {
+		t.Error("Expected target 'global-only' not found")
+	}
+
+	// Should have pi from global
+	if _, ok := cfg.Targets["pi"]; !ok {
+		t.Error("Expected target 'pi' not found")
+	}
+
+	// Should have local target
+	if _, ok := cfg.Targets["local"]; !ok {
+		t.Error("Expected target 'local' not found")
+	}
+
+	// Should have both repos
+	if _, ok := cfg.Repos["grimoire"]; !ok {
+		t.Error("Expected repo 'grimoire' not found")
+	}
+	if _, ok := cfg.Repos["local-repo"]; !ok {
+		t.Error("Expected repo 'local-repo' not found")
+	}
+}
+
+func TestLoad_LocalOverrides(t *testing.T) {
+	tmpDir := t.TempDir()
+	globalPath := filepath.Join(tmpDir, "global.toml")
+	localDir := filepath.Join(tmpDir, ".skillforge")
+	if err := os.MkdirAll(localDir, 0755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	localPath := filepath.Join(localDir, "config.toml")
+
+	// Write global config
+	globalCfg := `cache.path = "/global/cache"
+
+[targets.pi]
+path = "/global/pi"
+enabled = true
+`
+	if err := os.WriteFile(globalPath, []byte(globalCfg), 0644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	// Write local config with same target
+	localCfg := `cache.path = "/local/cache"
+
+[targets.pi]
+path = "/local/pi"
+enabled = false
+`
+	if err := os.WriteFile(localPath, []byte(localCfg), 0644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	// Change to tmpDir
+	oldCwd, _ := os.Getwd()
+	defer os.Chdir(oldCwd)
+	os.Chdir(tmpDir)
+
+	loader := &Loader{
+		scope:      ScopeAuto,
+		globalPath: globalPath,
+	}
+
+	cfg, err := loader.Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	// Local should override global cache.path
+	if cfg.Cache.Path != "/local/cache" {
+		t.Errorf("Cache.Path = %q, want %q", cfg.Cache.Path, "/local/cache")
+	}
+
+	// Local should override pi's path and enabled
+	pi, ok := cfg.Targets["pi"]
+	if !ok {
+		t.Fatal("Expected target 'pi' not found")
+	}
+	if pi.Path != "/local/pi" {
+		t.Errorf("pi.Path = %q, want %q (local override)", pi.Path, "/local/pi")
+	}
+	if pi.Enabled {
+		t.Error("pi.Enabled = true, want false (local override)")
+	}
+}
+
+func TestLoad_DifferentKeys(t *testing.T) {
+	tmpDir := t.TempDir()
+	globalPath := filepath.Join(tmpDir, "global.toml")
+	localDir := filepath.Join(tmpDir, ".skillforge")
+	if err := os.MkdirAll(localDir, 0755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	localPath := filepath.Join(localDir, "config.toml")
+
+	// Write global config with cache and pi target
+	globalCfg := `cache.path = "/global/cache"
+
+[targets.pi]
+path = "/global/pi"
+enabled = true
+`
+	if err := os.WriteFile(globalPath, []byte(globalCfg), 0644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	// Write local config with different target (no cache override)
+	localCfg := `
+[targets.local]
+path = "/local/skills"
+enabled = true
+`
+	if err := os.WriteFile(localPath, []byte(localCfg), 0644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	// Change to tmpDir
+	oldCwd, _ := os.Getwd()
+	defer os.Chdir(oldCwd)
+	os.Chdir(tmpDir)
+
+	loader := &Loader{
+		scope:      ScopeAuto,
+		globalPath: globalPath,
+	}
+
+	cfg, err := loader.Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	// Should have global cache (local didn't override)
+	if cfg.Cache.Path != "/global/cache" {
+		t.Errorf("Cache.Path = %q, want %q (preserved from global)", cfg.Cache.Path, "/global/cache")
+	}
+
+	// Should have pi from global
+	if _, ok := cfg.Targets["pi"]; !ok {
+		t.Error("Expected target 'pi' not found (preserved from global)")
+	}
+
+	// Should have local from local
+	if _, ok := cfg.Targets["local"]; !ok {
+		t.Error("Expected target 'local' not found")
+	}
+}
+
+func TestSave_LocalPreservesGlobal(t *testing.T) {
+	tmpDir := t.TempDir()
+	globalPath := filepath.Join(tmpDir, "global.toml")
+	localDir := filepath.Join(tmpDir, ".skillforge")
+	if err := os.MkdirAll(localDir, 0755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	localPath := filepath.Join(localDir, "config.toml")
+
+	// Write global config
+	globalCfg := `[targets.pi]
+path = "/global/pi"
+enabled = true
+
+[repos.grimoire]
+url = "https://github.com/rwese/agents-grimoire"
+branch = "main"
+`
+	if err := os.WriteFile(globalPath, []byte(globalCfg), 0644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	// Write existing local config
+	localCfg := `[targets.local]
+path = "/local/skills"
+enabled = true
+`
+	if err := os.WriteFile(localPath, []byte(localCfg), 0644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	// Change to tmpDir
+	oldCwd, _ := os.Getwd()
+	defer os.Chdir(oldCwd)
+	os.Chdir(tmpDir)
+
+	loader := &Loader{
+		scope:      ScopeAuto,
+		globalPath: globalPath,
+	}
+
+	// Save a new target locally
+	cfg := &Config{
+		Targets: map[string]Target{
+			"local": {
+				Name:    "local",
+				Path:    "/local/skills",
+				Enabled: true,
+			},
+			"new-local": {
+				Name:    "new-local",
+				Path:    "/new/local",
+				Enabled: true,
+			},
+		},
+	}
+
+	if err := loader.Save(cfg, true); err != nil {
+		t.Fatalf("Save(local=true) error = %v", err)
+	}
+
+	// Global should still have pi and grimoire
+	loader2 := &Loader{
+		scope:      ScopeGlobal,
+		globalPath: globalPath,
+	}
+	globalCfg2, err := loader2.Load()
+	if err != nil {
+		t.Fatalf("Load(global) error = %v", err)
+	}
+
+	if _, ok := globalCfg2.Targets["pi"]; !ok {
+		t.Error("Global target 'pi' was removed after local save")
+	}
+	if _, ok := globalCfg2.Repos["grimoire"]; !ok {
+		t.Error("Global repo 'grimoire' was removed after local save")
+	}
+}
+
+func TestSave_GlobalPreservesLocal(t *testing.T) {
+	tmpDir := t.TempDir()
+	globalPath := filepath.Join(tmpDir, "global.toml")
+	localDir := filepath.Join(tmpDir, ".skillforge")
+	if err := os.MkdirAll(localDir, 0755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	localPath := filepath.Join(localDir, "config.toml")
+
+	// Write global config
+	globalCfg := `[targets.pi]
+path = "/global/pi"
+enabled = true
+`
+	if err := os.WriteFile(globalPath, []byte(globalCfg), 0644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	// Write local config
+	localCfg := `[targets.local]
+path = "/local/skills"
+enabled = true
+
+[repos.local-repo]
+url = "https://github.com/test/local"
+branch = "main"
+`
+	if err := os.WriteFile(localPath, []byte(localCfg), 0644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	// Change to tmpDir
+	oldCwd, _ := os.Getwd()
+	defer os.Chdir(oldCwd)
+	os.Chdir(tmpDir)
+
+	loader := &Loader{
+		scope:      ScopeGlobal,
+		globalPath: globalPath,
+	}
+
+	// Save a new target globally
+	cfg := &Config{
+		Targets: map[string]Target{
+			"pi": {
+				Name:    "pi",
+				Path:    "/global/pi",
+				Enabled: true,
+			},
+			"new-global": {
+				Name:    "new-global",
+				Path:    "/new/global",
+				Enabled: true,
+			},
+		},
+	}
+
+	if err := loader.Save(cfg, false); err != nil {
+		t.Fatalf("Save(global) error = %v", err)
+	}
+
+	// Local should still have local target and repo
+	loader3 := &Loader{
+		scope:      ScopeLocal,
+		globalPath: globalPath,
+	}
+	localCfg3, err := loader3.Load()
+	if err != nil {
+		t.Fatalf("Load(local) error = %v", err)
+	}
+
+	if _, ok := localCfg3.Targets["local"]; !ok {
+		t.Error("Local target 'local' was removed after global save")
+	}
+	if _, ok := localCfg3.Repos["local-repo"]; !ok {
+		t.Error("Local repo 'local-repo' was removed after global save")
+	}
+}

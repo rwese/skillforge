@@ -38,35 +38,38 @@ func runTargetList(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	if len(cfg.Targets) == 0 {
+	// Collect targets
+	var targets []TargetOutput
+	for name, target := range cfg.Targets {
+		targets = append(targets, TargetOutput{
+			Name:    name,
+			Path:    target.Path,
+			Enabled: target.Enabled,
+		})
+	}
+
+	if len(targets) == 0 {
 		if parseFormat(formatFlag) == formatJSON {
-			printJSON([]TargetOutput{})
-		} else {
-			fmt.Println("No targets configured.")
+			return printJSON([]TargetOutput{})
 		}
+		fmt.Println("No targets configured.")
+		PrintHint(HintNoTargets)
 		return nil
 	}
 
-	if parseFormat(formatFlag) == formatJSON {
-		var targets []TargetOutput
-		for name, target := range cfg.Targets {
-			targets = append(targets, TargetOutput{
-				Name:    name,
-				Path:    target.Path,
-				Enabled: target.Enabled,
-			})
-		}
+	fmtmt := parseFormat(formatFlag)
+
+	if fmtmt == formatJSON {
 		return printJSON(targets)
 	}
 
-	fmt.Println("Configured Targets:")
-	for name, target := range cfg.Targets {
-		status := "disabled"
-		if target.Enabled {
-			status = "enabled"
-		}
-		fmt.Printf("  %s  %s  (%s)\n", name, config.ContractPath(target.Path), status)
+	if fmtmt == formatCompact {
+		fmt.Println(formatTargetCompact(targets))
+		return nil
 	}
+
+	// Default: table format
+	fmt.Println(formatTargetTable(targets))
 	return nil
 }
 
@@ -99,6 +102,7 @@ func runTargetAdd(cmd *cobra.Command, args []string) error {
 	}
 
 	if _, exists := cfg.Targets[name]; exists {
+		PrintHint(HintTargetExists)
 		return fmt.Errorf("target %q already exists", name)
 	}
 
@@ -140,6 +144,7 @@ func runTargetRemove(cmd *cobra.Command, args []string) error {
 
 	target, exists := cfg.Targets[name]
 	if !exists {
+		PrintHint(HintTargetNotFound)
 		return fmt.Errorf("target %q not found", name)
 	}
 
@@ -181,6 +186,7 @@ func runTargetEnable(cmd *cobra.Command, args []string) error {
 
 	target, exists := cfg.Targets[name]
 	if !exists {
+		PrintHint(HintTargetNotFound)
 		return fmt.Errorf("target %q not found", name)
 	}
 
@@ -220,6 +226,7 @@ func runTargetDisable(cmd *cobra.Command, args []string) error {
 
 	target, exists := cfg.Targets[name]
 	if !exists {
+		PrintHint(HintTargetNotFound)
 		return fmt.Errorf("target %q not found", name)
 	}
 
