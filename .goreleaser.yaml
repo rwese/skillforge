@@ -1,0 +1,46 @@
+# .goreleaser.yaml
+# https://goreleaser.com
+
+version: 2
+
+project_name: skillforge
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - dir: ./cmd/skillforge
+    binary: skillforge
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+
+archives:
+  - files:
+      - README.md
+      - LICENSE
+      - install.sh
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+
+release:
+  github:
+    owner: rwese
+    name: skillforge-ng
+  draft: false
