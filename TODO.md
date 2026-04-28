@@ -1,15 +1,16 @@
 # skillforge-ng TODO
 
-## v1.1 (Current - In Progress)
+## v1.1 - Completed ✓
+
 See: [Stability & Quality PRD](./docs/prds/skillforge-ng-stability-quality/README.md)
 
-### Bug Fixes
+### Bug Fixes ✓
 - [x] Fix cache.go Clone branch logic
 - [x] Add ensureTargetDir call in skill.go
 - [x] Remove unused commit variable
 - [x] Fix spinner goroutine leak
 
-### Testing
+### Testing ✓
 - [x] Add config_test.go (82.7% coverage)
 - [x] Add search_test.go (100% coverage)
 - [x] Add grimoire_test.go (types tested)
@@ -17,7 +18,7 @@ See: [Stability & Quality PRD](./docs/prds/skillforge-ng-stability-quality/READM
 - [x] Verify `go test ./...` passes
 - [x] Verify `go vet ./...` is clean
 
-### UX Polish
+### UX Polish ✓
 - [x] Add `--dry-run` flag (preview only)
 - [x] Add `-y/--yes` flag (skip confirmations)
 - [x] Add `-v/--verbose` flag (debug output)
@@ -25,9 +26,7 @@ See: [Stability & Quality PRD](./docs/prds/skillforge-ng-stability-quality/READM
 - [x] Improve error messages with context
 - [x] Add progress for file copy operations
 
-### Documentation
-See: [Documentation PRD](./docs/prds/skillforge-ng-documentation/README.md)
-
+### Documentation ✓
 - [x] Refresh README.md with troubleshooting
 - [x] Create CONTRIBUTING.md
 - [x] Create CHANGELOG.md
