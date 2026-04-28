@@ -38,6 +38,12 @@ go test ./... -v    # Run with verbose output
 go test ./... -cover # With coverage
 ```
 
+## Key Implementation Notes
+
+- **Skill discovery**: Checks `skills/` and `.agents/skills/` subdirectories in repos
+- **Config scope**: `--local` flag creates local config if it doesn't exist
+- **Config merging**: Local save merges with existing to preserve global data
+
 ## Git Workflow
 
 - Branches: `feat/<name>`, `fix/<name>`
@@ -52,6 +58,7 @@ go test ./... -cover # With coverage
 - Run `go build` before committing
 - Test CLI commands manually after major changes
 - Update TODO.md when completing tasks
+- Build and test after config-related changes
 
 **USUALLY / ASK FIRST**
 - Add new dependencies
