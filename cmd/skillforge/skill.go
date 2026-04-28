@@ -595,8 +595,21 @@ func checkSkillUpdates(agentName, scope string, path string, cfg *config.Config,
 		return false, nil
 	}
 
+	if len(skills) == 0 {
+		if verboseFlag {
+			fmt.Printf("Checking %s (%s): no skills installed\n", agentName, scope)
+		}
+		return false, nil
+	}
+
 	hasUpdates := false
 	label := fmt.Sprintf("%s (%s)", agentName, scope)
+
+	if verboseFlag {
+		fmt.Printf("Checking %d skills in %s...\n", len(skills), label)
+	}
+
+	checkedCount := 0
 
 	for _, skill := range skills {
 		// Find the source repo
@@ -616,16 +629,31 @@ func checkSkillUpdates(agentName, scope string, path string, cfg *config.Config,
 		}
 
 		if repoName == "" {
+			if verboseFlag {
+				source := skill.Grimoire.Source
+				if source == "" {
+					source = "<unknown>"
+				}
+				fmt.Printf("  - %s: no cached repo for %s\n", skill.Name, source)
+			}
 			continue
 		}
+
+		checkedCount++
 
 		if currentCommit != newCommit && newCommit != "" {
 			hasUpdates = true
 			if checkFlag {
-				fmt.Printf("  ↻ %s in %s has updates\n", skill.Name, label)
+				fmt.Printf("  ↻ %s has updates\n", skill.Name)
+				if verboseFlag {
+					fmt.Printf("     %s → %s\n", shortenCommit(currentCommit), shortenCommit(newCommit))
+				}
 			} else {
 				// Re-install skill with new commit
 				fmt.Printf("Updating %s in %s...\n", skill.Name, label)
+				if verboseFlag {
+					fmt.Printf("     %s → %s\n", shortenCommit(currentCommit), shortenCommit(newCommit))
+				}
 
 				skills, _ := repo.DiscoverSkills(cache.PathFor(repoName), cfg.Repos[repoName].URL)
 				for _, s := range skills {
@@ -640,10 +668,24 @@ func checkSkillUpdates(agentName, scope string, path string, cfg *config.Config,
 					}
 				}
 			}
-		} else if checkFlag {
-			fmt.Printf("  ✓ %s in %s up to date\n", skill.Name, label)
+		} else {
+			if checkFlag || verboseFlag {
+				fmt.Printf("  ✓ %s is up to date\n", skill.Name)
+			}
 		}
 	}
 
+	if verboseFlag && !hasUpdates && !checkFlag {
+		fmt.Printf("Checked %d skills: all up to date\n", checkedCount)
+	}
+
 	return hasUpdates, nil
+}
+
+// shortenCommit returns first 7 chars of commit or empty string.
+func shortenCommit(commit string) string {
+	if len(commit) >= 7 {
+		return commit[:7]
+	}
+	return commit
 }
