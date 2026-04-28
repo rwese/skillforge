@@ -1,6 +1,6 @@
 # skillforge-ng TODO
 
-## v1.2 - Usability Improvements ✓ (in progress)
+## v1.2 - Usability Improvements ✓ (completed)
 See: [Usability Improvements PRD](./docs/prds/skillforge-usability-improvements/README.md)
 
 ### Phase 1: Config Merge Fix ✓
@@ -26,13 +26,13 @@ See: [Usability Improvements PRD](./docs/prds/skillforge-usability-improvements/
 - [x] Update `repo list` with table/compact/json
 - [x] Implement auto-compact for pipes
 
-### Phase 4: Integration Tests ✓ (pending)
-- [ ] Set up integration test environment (temp cwd + local config)
-- [ ] Test full `skill install` flow
-- [ ] Test `skill remove` flow
-- [ ] Test `target add/list/remove` cycle
-- [ ] Test scope merging with temp directories
-- [ ] Test output formats (text/table/json/compact)
+### Phase 4: Integration Tests ✓
+- [x] Set up integration test environment (temp cwd + local config)
+- [x] Test full `target add/list/remove` cycle
+- [x] Test scope merging with temp directories
+- [x] Test output formats (table/json/compact)
+- [x] Test hints in error messages
+- [x] Test NO_COLOR environment variable
 
 ---
 
