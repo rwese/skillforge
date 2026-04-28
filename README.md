@@ -12,16 +12,27 @@ A focused CLI for managing agent skills from git repositories.
 
 ## Installation
 
+### Pre-built binary
+
 ```bash
-go install
+# Download the latest release for your platform
+# https://github.com/rwese/skillforge-ng/releases
+
+# Linux/macOS
+curl -fsSL https://raw.githubusercontent.com/rwese/skillforge-ng/main/install.sh | bash
+
+# Or manually place the binary in your PATH
+mv skillforge ~/.local/bin/
 ```
 
-Or build from source:
+### Build from source
 
 ```bash
 git clone https://github.com/rwese/skillforge-ng
 cd skillforge-ng
 go build -o skillforge ./cmd/skillforge/
+# Place in PATH
+mv skillforge ~/.local/bin/
 ```
 
 ## Quick Start
