@@ -89,6 +89,7 @@ type SkillOutput struct {
 // RepoOutput represents a repository for JSON output.
 type RepoOutput struct {
 	Name       string `json:"name"`
+	Alias      string `json:"alias,omitempty"`
 	URL        string `json:"url"`
 	Branch     string `json:"branch"`
 	SkillCount int    `json:"skill_count"`
@@ -313,8 +314,12 @@ func formatRepoTable(repos []RepoOutput) string {
 	nameWidth := 10
 	urlWidth := 30
 	for _, r := range repos {
-		if len(r.Name) > nameWidth {
-			nameWidth = len(r.Name)
+		displayName := r.Name
+		if r.Alias != "" {
+			displayName = r.Alias
+		}
+		if len(displayName) > nameWidth {
+			nameWidth = len(displayName)
 		}
 		if len(r.URL) > urlWidth {
 			urlWidth = len(r.URL)
@@ -338,8 +343,12 @@ func formatRepoTable(repos []RepoOutput) string {
 
 	// Print rows
 	for _, r := range repos {
+		displayName := r.Name
+		if r.Alias != "" {
+			displayName = r.Alias
+		}
 		row := fmt.Sprintf("%-*s  %-*s  %d",
-			nameWidth, r.Name,
+			nameWidth, displayName,
 			urlWidth, r.URL,
 			r.SkillCount)
 		b.WriteString(row)
@@ -353,7 +362,11 @@ func formatRepoTable(repos []RepoOutput) string {
 func formatRepoCompact(repos []RepoOutput) string {
 	var lines []string
 	for _, r := range repos {
-		lines = append(lines, fmt.Sprintf("%s (%d skills)", r.Name, r.SkillCount))
+		displayName := r.Name
+		if r.Alias != "" {
+			displayName = r.Alias
+		}
+		lines = append(lines, fmt.Sprintf("%s (%d skills)", displayName, r.SkillCount))
 	}
 	sort.Strings(lines)
 	return strings.Join(lines, "\n")

@@ -34,6 +34,7 @@ type RepoInfo struct {
 	URL     string `toml:"url"`
 	Branch  string `toml:"branch"`
 	Updated string `toml:"updated"`
+	Alias   string `toml:"alias"`
 }
 
 // Scope represents the config scope.

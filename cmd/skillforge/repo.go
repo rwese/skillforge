@@ -30,9 +30,11 @@ func init() {
 }
 
 var branchFlag string
+var aliasFlag string
 
 func init() {
 	repoAddCmd.Flags().StringVarP(&branchFlag, "branch", "b", "main", "Branch to track")
+	repoAddCmd.Flags().StringVarP(&aliasFlag, "alias", "a", "", "Alias for this repository")
 	repoListCmd.Flags().StringVarP(&formatFlag, "format", "f", "text", "Output format: text, json")
 }
 
@@ -85,6 +87,7 @@ func runRepoAdd(cmd *cobra.Command, args []string) error {
 		URL:     url,
 		Branch:  branchFlag,
 		Updated: time.Now().Format(time.RFC3339),
+		Alias:   aliasFlag,
 	}
 
 	if err := saveConfig(cfg); err != nil {
@@ -124,6 +127,7 @@ func runRepoList(cmd *cobra.Command, args []string) error {
 		skills, _ := repo.DiscoverSkills(cache.PathFor(name), info.URL)
 		repos = append(repos, RepoOutput{
 			Name:       name,
+			Alias:      info.Alias,
 			URL:        info.URL,
 			Branch:     info.Branch,
 			SkillCount: len(skills),
@@ -239,7 +243,7 @@ func runRepoUpdate(cmd *cobra.Command, args []string) error {
 
 		oldCommit, _ := cache.GetCommit(name)
 
-		spinner := NewSpinner(fmt.Sprintf("Updating %s", name))
+		spinner := NewSpinner(fmt.Sprintf("Updating %s ", name))
 		spinner.Start()
 		if err := cache.Pull(name); err != nil {
 			// Try fetch + reset if pull fails
