@@ -47,7 +47,7 @@ func init() {
 
 	rootCmd.PersistentFlags().BoolVarP(&globalFlag, "global", "g", false, "Use global config only")
 	rootCmd.PersistentFlags().BoolVarP(&localFlag, "local", "l", false, "Use local config only")
-	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "Config file path")
+	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "Config file path (default: ~/.config/skillforge/config.toml)")
 	rootCmd.PersistentFlags().BoolVarP(&dryRunFlag, "dry-run", "n", false, "Preview changes without applying")
 	rootCmd.PersistentFlags().BoolVarP(&yesFlag, "yes", "y", false, "Skip confirmations and use defaults")
 	rootCmd.PersistentFlags().BoolVarP(&verboseFlag, "verbose", "v", false, "Enable verbose debug output")
