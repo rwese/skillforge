@@ -1,91 +1,46 @@
-# skillforge-ng TODO
+## Scoped Targets Implementation
 
-## v1.2 - Usability Improvements ✓ (completed)
-See: [Usability Improvements PRD](./docs/prds/skillforge-usability-improvements/README.md)
+Goal: Implement agent-centric target scoping with global/local paths and a setup wizard.
 
-### Phase 1: Config Merge Fix ✓
-- [x] Write failing unit tests for config merging
-- [x] Fix `config.Load()` to merge global + local
-- [x] Fix `config.Save()` to preserve all scopes
-- [x] Verify all tests pass
+### Tasks
 
-### Phase 2: Onboarding Hints ✓
-- [x] Create hint formatting function (hints.go)
-- [x] Add hints to `skill install` errors
-- [x] Add hints to `skill search` errors
-- [x] Add hints to `repo` command errors
-- [x] Add hints to `target` command errors
+#### Phase 1: Agent Config Types
+- [x] Create `internal/agents/agents.go`
+  - [x] `Agent` struct with `Global`, `Local` paths
+  - [x] `AgentsConfig` struct
+  - [x] `LoadAgents(scope Scope)` function
+  - [x] `MergeAgents(global, local)` function
+  - [x] `KnownAgents` map (pi, codex, claude defaults)
 
-### Phase 3: Output Improvements ✓
-- [x] Add lipgloss dependency
-- [x] Create `color.go` with color definitions
-- [x] Create `output.go` with formatting functions
-- [x] Implement color auto-detection
-- [x] Update `skill list` with table/compact/json
-- [x] Update `target list` with table/compact/json
-- [x] Update `repo list` with table/compact/json
-- [x] Implement auto-compact for pipes
+#### Phase 2: Setup Wizard
+- [x] Create `cmd/skillforge/setup.go`
+  - [x] `setup` command with `detect` subcommand
+  - [x] `detectKnownAgents()` — scan filesystem for known agents
+  - [x] Interactive confirmation flow
+  - [x] Write to `~/.config/skillforge/agents.toml`
 
-### Phase 4: Integration Tests ✓
-- [x] Set up integration test environment (temp cwd + local config)
-- [x] Test full `target add/list/remove` cycle
-- [x] Test scope merging with temp directories
-- [x] Test output formats (table/json/compact)
-- [x] Test hints in error messages
-- [x] Test NO_COLOR environment variable
+#### Phase 3: Update Skill Operations
+- [x] Update `skill list` to use agents config
+- [x] Update `skill install` to use agents config
+- [x] Update `skill update` to use agents config
+- [x] Update `skill remove` to use agents config
 
----
+#### Phase 4: Tests
+- [x] Add tests for `internal/agents/`
+- [ ] Add integration tests for setup wizard
 
-## v1.1 - Completed ✓
+### In Progress
 
-See: [Stability & Quality PRD](./docs/prds/skillforge-ng-stability-quality/README.md)
+-
 
-### Bug Fixes ✓
-- [x] Fix cache.go Clone branch logic
-- [x] Add ensureTargetDir call in skill.go
-- [x] Remove unused commit variable
-- [x] Fix spinner goroutine leak
+### Blocked
 
-### Testing ✓
-- [x] Add config_test.go (82.7% coverage)
-- [x] Add search_test.go (100% coverage)
-- [x] Add grimoire_test.go (types tested)
-- [x] Add repo_test.go integration tests (64.4% coverage)
-- [x] Verify `go test ./...` passes
-- [x] Verify `go vet ./...` is clean
+-
 
-### UX Polish ✓
-- [x] Add `--dry-run` flag (preview only)
-- [x] Add `-y/--yes` flag (skip confirmations)
-- [x] Add `-v/--verbose` flag (debug output)
-- [x] Add confirmation prompts for destructive actions
-- [x] Improve error messages with context
-- [x] Add progress for file copy operations
+### Done
 
-### Documentation ✓
-- [x] Refresh README.md with troubleshooting
-- [x] Create CONTRIBUTING.md
-- [x] Create CHANGELOG.md
-
----
-
-## v2 Future
-See: [v2 PRD](./docs/prds/skillforge-ng-v2/README.md)
-
-- [ ] `skillforge doctor` command (config, cache, skill health checks)
-- [ ] Dirty state detection (tree_hash in grimoire)
-- [ ] Auto-check on `skill list` and `skill update`
-
----
-
-## Project Resources
-
-| Resource | Location |
-|----------|----------|
-| Code Review | `docs/reviews/2026-04-28-code-review.md` |
-| Improvement Plan | `docs/plans/improvement-plan.md` |
-| v1 PRD | `docs/prds/skillforge-ng-v1/README.md` |
-| v2 PRD | `docs/prds/skillforge-ng-v2/README.md` |
-| v1.1 PRD | `docs/prds/skillforge-ng-stability-quality/README.md` |
-| Documentation PRD | `docs/prds/skillforge-ng-documentation/README.md` |
-| Usability PRD | `docs/prds/skillforge-usability-improvements/README.md` |
+- [x] Design finalized
+- [x] Phase 1: Agent config types (internal/agents/)
+- [x] Phase 2: Setup wizard (cmd/skillforge/setup.go)
+- [x] Phase 3: Skill operations use agents config
+- [x] Phase 4: Tests for internal/agents/

@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/rwese/skillforge-ng/internal/agents"
 	"github.com/rwese/skillforge-ng/internal/config"
 	"github.com/rwese/skillforge-ng/internal/repo"
 	"github.com/rwese/skillforge-ng/internal/search"
@@ -30,13 +31,23 @@ func init() {
 	skillCmd.AddCommand(skillUpdateCmd)
 }
 
-var targetFlag string
+var (
+	targetFlag string
+	agentFlag  string
+	scopeFlag  string // "global", "local", or "auto"
+)
 
 func init() {
-	skillInstallCmd.Flags().StringVarP(&targetFlag, "target", "t", "", "Target agent (default: all enabled)")
-	skillListCmd.Flags().StringVarP(&targetFlag, "target", "t", "", "Filter by target")
+	skillInstallCmd.Flags().StringVarP(&agentFlag, "agent", "a", "", "Install to specific agent (pi, codex, claude)")
+	skillInstallCmd.Flags().StringVarP(&scopeFlag, "scope", "s", "auto", "Scope: global, local, or auto")
+	skillListCmd.Flags().StringVarP(&agentFlag, "agent", "a", "", "Filter by agent")
+	skillListCmd.Flags().StringVarP(&scopeFlag, "scope", "s", "auto", "Scope: global, local, or auto")
 	skillListCmd.Flags().StringVarP(&formatFlag, "format", "f", "text", "Output format: text, json")
-	skillRemoveCmd.Flags().StringVarP(&targetFlag, "target", "t", "", "Target agent (default: all)")
+	skillRemoveCmd.Flags().StringVarP(&agentFlag, "agent", "a", "", "Remove from specific agent")
+	skillRemoveCmd.Flags().StringVarP(&scopeFlag, "scope", "s", "auto", "Scope: global, local, or auto")
+	skillUpdateCmd.Flags().BoolVarP(&checkFlag, "check", "c", false, "Check for updates without applying")
+	skillUpdateCmd.Flags().StringVarP(&agentFlag, "agent", "a", "", "Update skills for specific agent")
+	skillUpdateCmd.Flags().StringVarP(&scopeFlag, "scope", "s", "auto", "Scope: global, local, or auto")
 }
 
 var skillInstallCmd = &cobra.Command{
@@ -87,39 +98,41 @@ func runSkillInstall(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("skill %q not found in any cached repository", skillName)
 	}
 
-	// Determine targets to install to
-	targets := getTargetsToInstall(cfg, targetFlag)
+	// Determine paths to install to
+	installPaths, err := getInstallPaths(agentFlag, scopeFlag)
+	if err != nil {
+		return err
+	}
 
-	if len(targets) == 0 {
-		err := fmt.Errorf("no enabled targets found")
+	if len(installPaths) == 0 {
+		err := fmt.Errorf("no install paths found")
 		PrintHint(HintNoTargets)
 		return err
 	}
 
 	// Dry-run mode
 	if dryRunFlag {
-		fmt.Printf("[DRY-RUN] Would install %q to %d target(s): %v\n", skillName, len(targets), targets)
+		fmt.Printf("[DRY-RUN] Would install %q to %d path(s): %v\n", skillName, len(installPaths), installPaths)
 		return nil
 	}
 
-	// Install to each target
-	for _, targetName := range targets {
-		targetBasePath := config.ExpandPath(cfg.Targets[targetName].Path)
-		if err := ensureTargetDir(targetBasePath); err != nil {
+	// Install to each path
+	for _, ip := range installPaths {
+		if err := ensureTargetDir(ip.Path); err != nil {
 			return fmt.Errorf("creating target directory: %w", err)
 		}
-		targetPath := filepath.Join(targetBasePath, skillName)
+		targetPath := filepath.Join(ip.Path, skillName)
 
 		// Check for conflicts
 		if _, err := os.Stat(targetPath); err == nil {
-			fmt.Printf("  ! %s already exists in %s, skipping\n", skillName, targetName)
+			fmt.Printf("  ! %s already exists in %s, skipping\n", skillName, ip.Label)
 			continue
 		}
 
-		fmt.Printf("Installing %s to %s...\n", skillName, targetName)
+		fmt.Printf("Installing %s to %s...\n", skillName, ip.Label)
 
 		// Use progress callback if verbose
-		installErr := error(nil)
+		var installErr error
 		if verboseFlag {
 			installErr = repo.InstallSkillWithProgress(*targetSkill, targetPath, commit, func(src, dst string) {
 				verbose("Copied %s -> %s", src, dst)
@@ -129,35 +142,90 @@ func runSkillInstall(cmd *cobra.Command, args []string) error {
 		}
 
 		if installErr != nil {
-			return fmt.Errorf("installing to %s: %w", targetName, installErr)
+			return fmt.Errorf("installing to %s: %w", ip.Label, installErr)
 		}
-		fmt.Printf("  ✓ %s installed to %s\n", skillName, targetName)
+		fmt.Printf("  ✓ %s installed to %s\n", skillName, ip.Label)
 	}
 
 	return nil
 }
 
-func getTargetsToInstall(cfg *config.Config, name string) []string {
-	var targets []string
+// InstallPath represents a path to install a skill to.
+type InstallPath struct {
+	Path  string
+	Label string // e.g., "pi (global)", "codex (local)"
+}
 
-	if name != "" {
-		// Specific target
-		if target, exists := cfg.Targets[name]; exists {
-			if target.Enabled {
-				targets = append(targets, name)
+// getInstallPaths returns paths to install skills to based on agent and scope flags.
+func getInstallPaths(agentName, scope string) ([]InstallPath, error) {
+	agentsCfg, err := agents.LoadAgents()
+	if err != nil {
+		return nil, fmt.Errorf("loading agents config: %w", err)
+	}
+
+	var paths []InstallPath
+
+	if agentName != "" {
+		// Specific agent
+		agent, exists := agentsCfg.Agents[agentName]
+		if !exists {
+			return nil, fmt.Errorf("agent %q not configured. Run 'skillforge setup list' to see configured agents", agentName)
+		}
+		paths = appendAgentPaths(paths, agentName, agent, scope)
+	} else {
+		// All agents
+		for name, agent := range agentsCfg.Agents {
+			paths = appendAgentPaths(paths, name, agent, scope)
+		}
+	}
+
+	return paths, nil
+}
+
+// appendAgentPaths adds paths from an agent based on scope.
+func appendAgentPaths(paths []InstallPath, agentName string, agent agents.Agent, scope string) []InstallPath {
+	switch scope {
+	case "global":
+		if agent.Global != nil {
+			paths = append(paths, InstallPath{
+				Path:  agents.ExpandPath(agent.Global.Value),
+				Label: fmt.Sprintf("%s (global)", agentName),
+			})
+		}
+	case "local":
+		if agent.Local != nil {
+			paths = append(paths, InstallPath{
+				Path:  agents.ExpandPath(agent.Local.Value),
+				Label: fmt.Sprintf("%s (local)", agentName),
+			})
+		}
+	case "auto":
+		fallthrough
+	default:
+		// In project = local first, then global; outside = global only
+		if isInProject() {
+			if agent.Local != nil {
+				paths = append(paths, InstallPath{
+					Path:  agents.ExpandPath(agent.Local.Value),
+					Label: fmt.Sprintf("%s (local)", agentName),
+				})
+			}
+			if agent.Global != nil {
+				paths = append(paths, InstallPath{
+					Path:  agents.ExpandPath(agent.Global.Value),
+					Label: fmt.Sprintf("%s (global)", agentName),
+				})
+			}
+		} else {
+			if agent.Global != nil {
+				paths = append(paths, InstallPath{
+					Path:  agents.ExpandPath(agent.Global.Value),
+					Label: fmt.Sprintf("%s (global)", agentName),
+				})
 			}
 		}
-		return targets
 	}
-
-	// All enabled targets
-	for tname, target := range cfg.Targets {
-		if target.Enabled {
-			targets = append(targets, tname)
-		}
-	}
-
-	return targets
+	return paths
 }
 
 var skillListCmd = &cobra.Command{
@@ -172,31 +240,67 @@ func runSkillList(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	agentsCfg, err := agents.LoadAgents()
+	if err != nil {
+		return fmt.Errorf("loading agents config: %w", err)
+	}
+
 	var allSkills []SkillOutput
+	_ = cfg // cfg is kept for future repo-based listing
 
-	for name, target := range cfg.Targets {
-		if targetFlag != "" && targetFlag != name {
+	for agentName, agent := range agentsCfg.Agents {
+		if agentFlag != "" && agentFlag != agentName {
 			continue
 		}
 
-		skills, err := repo.ListInstalledSkills(config.ExpandPath(target.Path))
-		if err != nil {
-			if !os.IsNotExist(err) {
-				return fmt.Errorf("listing skills in %s: %w", name, err)
+		// List global skills
+		if shouldListScope(agent.Global, scopeFlag, "global") {
+			if agent.Global != nil {
+				path := agents.ExpandPath(agent.Global.Value)
+				skills, err := repo.ListInstalledSkills(path)
+				if err != nil {
+					if !os.IsNotExist(err) {
+						return fmt.Errorf("listing skills in %s (global): %w", agentName, err)
+					}
+				}
+				for _, skill := range skills {
+					commit := skill.Grimoire.Commit
+					if len(commit) > 7 {
+						commit = commit[:7]
+					}
+					allSkills = append(allSkills, SkillOutput{
+						Name:   skill.Name,
+						Commit: commit,
+						Target: fmt.Sprintf("%s/global", agentName),
+						Source: skill.Grimoire.Source,
+					})
+				}
 			}
-			continue
 		}
 
-		for _, skill := range skills {
-			commit := skill.Grimoire.Commit
-			if len(commit) > 7 {
-				commit = commit[:7]
+		// List local skills
+		if shouldListScope(agent.Local, scopeFlag, "local") {
+			if agent.Local != nil {
+				path := agents.ExpandPath(agent.Local.Value)
+				skills, err := repo.ListInstalledSkills(path)
+				if err != nil {
+					if !os.IsNotExist(err) {
+						return fmt.Errorf("listing skills in %s (local): %w", agentName, err)
+					}
+				}
+				for _, skill := range skills {
+					commit := skill.Grimoire.Commit
+					if len(commit) > 7 {
+						commit = commit[:7]
+					}
+					allSkills = append(allSkills, SkillOutput{
+						Name:   skill.Name,
+						Commit: commit,
+						Target: fmt.Sprintf("%s/local", agentName),
+						Source: skill.Grimoire.Source,
+					})
+				}
 			}
-			allSkills = append(allSkills, SkillOutput{
-				Name:   skill.Name,
-				Commit: commit,
-				Target: name,
-			})
 		}
 	}
 
@@ -208,6 +312,9 @@ func runSkillList(cmd *cobra.Command, args []string) error {
 
 	if len(allSkills) == 0 {
 		fmt.Println("No skills installed.")
+		if len(agentsCfg.Agents) == 0 {
+			fmt.Println("Run 'skillforge setup detect' to configure agents.")
+		}
 		return nil
 	}
 
@@ -221,6 +328,21 @@ func runSkillList(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+// shouldListScope determines if a scope should be listed based on scope flag.
+func shouldListScope(path *agents.Path, scopeFlag, scopeValue string) bool {
+	if path == nil {
+		return false
+	}
+	switch scopeFlag {
+	case "global":
+		return scopeValue == "global"
+	case "local":
+		return scopeValue == "local"
+	default: // auto
+		return true
+	}
+}
+
 var skillRemoveCmd = &cobra.Command{
 	Use:   "remove [name]",
 	Short: "Remove a skill",
@@ -230,62 +352,105 @@ var skillRemoveCmd = &cobra.Command{
 
 func runSkillRemove(cmd *cobra.Command, args []string) error {
 	skillName := args[0]
-	cfg, err := loadConfig()
+
+	agentsCfg, err := agents.LoadAgents()
 	if err != nil {
-		return err
+		return fmt.Errorf("loading agents config: %w", err)
 	}
 
-	// Determine targets to remove from
-	targets := getTargetsToRemove(cfg, targetFlag)
+	// Determine paths to remove from
+	removePaths := getRemovePaths(agentsCfg, agentFlag, scopeFlag)
 
 	// Confirm if not using --yes
-	if !yesFlag && len(targets) > 0 {
-		fmt.Printf("Remove skill %q from %d target(s)? ", skillName, len(targets))
+	if !yesFlag && len(removePaths) > 0 {
+		fmt.Printf("Remove skill %q from %d location(s)? ", skillName, len(removePaths))
 		if !confirm("") {
 			return fmt.Errorf("cancelled")
 		}
 	}
 
 	removed := false
-	for _, targetName := range targets {
-		targetPath := filepath.Join(config.ExpandPath(cfg.Targets[targetName].Path), skillName)
+	for _, rp := range removePaths {
+		targetPath := filepath.Join(rp.Path, skillName)
 
 		if _, err := os.Stat(targetPath); os.IsNotExist(err) {
 			continue
 		}
 
-		fmt.Printf("Removing %s from %s...\n", skillName, targetName)
+		fmt.Printf("Removing %s from %s...\n", skillName, rp.Label)
 		if err := repo.RemoveSkill(targetPath); err != nil {
-			return fmt.Errorf("removing from %s: %w", targetName, err)
+			return fmt.Errorf("removing from %s: %w", rp.Label, err)
 		}
-		fmt.Printf("  ✓ %s removed from %s\n", skillName, targetName)
+		fmt.Printf("  ✓ %s removed from %s\n", skillName, rp.Label)
 		removed = true
 	}
 
 	if !removed {
 		PrintHint(HintSkillNotInstalled)
-		return fmt.Errorf("skill %q not found in any target", skillName)
+		return fmt.Errorf("skill %q not found in any location", skillName)
 	}
 
 	return nil
 }
 
-func getTargetsToRemove(cfg *config.Config, name string) []string {
-	var targets []string
+// RemovePath represents a path to remove a skill from.
+type RemovePath struct {
+	Path  string
+	Label string
+}
 
-	if name != "" {
-		if _, exists := cfg.Targets[name]; exists {
-			targets = append(targets, name)
+func getRemovePaths(cfg *agents.AgentsConfig, agentName, scope string) []RemovePath {
+	var paths []RemovePath
+
+	if agentName != "" {
+		agent, exists := cfg.Agents[agentName]
+		if !exists {
+			return paths
 		}
-		return targets
+		paths = appendRemovePaths(paths, agentName, agent, scope)
+	} else {
+		for name, agent := range cfg.Agents {
+			paths = appendRemovePaths(paths, name, agent, scope)
+		}
 	}
 
-	// All targets
-	for tname := range cfg.Targets {
-		targets = append(targets, tname)
-	}
+	return paths
+}
 
-	return targets
+func appendRemovePaths(paths []RemovePath, agentName string, agent agents.Agent, scope string) []RemovePath {
+	switch scope {
+	case "global":
+		if agent.Global != nil {
+			paths = append(paths, RemovePath{
+				Path:  agents.ExpandPath(agent.Global.Value),
+				Label: fmt.Sprintf("%s (global)", agentName),
+			})
+		}
+	case "local":
+		if agent.Local != nil {
+			paths = append(paths, RemovePath{
+				Path:  agents.ExpandPath(agent.Local.Value),
+				Label: fmt.Sprintf("%s (local)", agentName),
+			})
+		}
+	case "auto":
+		fallthrough
+	default:
+		// Remove from wherever it exists
+		if agent.Global != nil {
+			paths = append(paths, RemovePath{
+				Path:  agents.ExpandPath(agent.Global.Value),
+				Label: fmt.Sprintf("%s (global)", agentName),
+			})
+		}
+		if agent.Local != nil {
+			paths = append(paths, RemovePath{
+				Path:  agents.ExpandPath(agent.Local.Value),
+				Label: fmt.Sprintf("%s (local)", agentName),
+			})
+		}
+	}
+	return paths
 }
 
 var skillSearchCmd = &cobra.Command{
@@ -361,11 +526,6 @@ var skillUpdateCmd = &cobra.Command{
 	RunE:  runSkillUpdate,
 }
 
-func init() {
-	skillUpdateCmd.Flags().BoolVarP(&checkFlag, "check", "c", false, "Check for updates without applying")
-	skillUpdateCmd.Flags().StringVarP(&targetFlag, "target", "t", "", "Filter by target")
-}
-
 func runSkillUpdate(cmd *cobra.Command, args []string) error {
 	cfg, err := loadConfig()
 	if err != nil {
@@ -385,61 +545,37 @@ func runSkillUpdate(cmd *cobra.Command, args []string) error {
 	fmt.Println("Checking skill updates...")
 	hasUpdates := false
 
-	for targetName, target := range cfg.Targets {
-		if targetFlag != "" && targetFlag != targetName {
+	agentsCfg, err := agents.LoadAgents()
+	if err != nil {
+		return fmt.Errorf("loading agents config: %w", err)
+	}
+
+	for agentName, agent := range agentsCfg.Agents {
+		if agentFlag != "" && agentFlag != agentName {
 			continue
 		}
 
-		skills, err := repo.ListInstalledSkills(config.ExpandPath(target.Path))
-		if err != nil {
-			continue
+		// Check global
+		if shouldListScope(agent.Global, scopeFlag, "global") {
+			if agent.Global != nil {
+				path := agents.ExpandPath(agent.Global.Value)
+				updates, err := checkSkillUpdates(agentName, "global", path, cfg, cache)
+				if err != nil {
+					fmt.Printf("  ! Error checking %s (global): %v\n", agentName, err)
+				}
+				hasUpdates = hasUpdates || updates
+			}
 		}
 
-		for _, skill := range skills {
-			// Find the source repo
-			var currentCommit string
-			var newCommit string
-			var repoName string
-
-			for rn, info := range cfg.Repos {
-				if info.URL == skill.Grimoire.Source {
-					repoName = rn
-					currentCommit = skill.Grimoire.Commit
-					if cache.Exists(rn) {
-						newCommit, _ = cache.GetCommit(rn)
-					}
-					break
+		// Check local
+		if shouldListScope(agent.Local, scopeFlag, "local") {
+			if agent.Local != nil {
+				path := agents.ExpandPath(agent.Local.Value)
+				updates, err := checkSkillUpdates(agentName, "local", path, cfg, cache)
+				if err != nil {
+					fmt.Printf("  ! Error checking %s (local): %v\n", agentName, err)
 				}
-			}
-
-			if repoName == "" {
-				continue
-			}
-
-			if currentCommit != newCommit && newCommit != "" {
-				hasUpdates = true
-				if checkFlag {
-					fmt.Printf("  ↻ %s in %s has updates\n", skill.Name, targetName)
-				} else {
-					// Re-install skill with new commit
-					fmt.Printf("Updating %s in %s...\n", skill.Name, targetName)
-
-					// Find skill in repo
-					skills, _ := repo.DiscoverSkills(cache.PathFor(repoName), cfg.Repos[repoName].URL)
-					for _, s := range skills {
-						if s.Name == skill.Name {
-							targetPath := filepath.Join(config.ExpandPath(target.Path), skill.Name)
-							if err := repo.InstallSkill(s, targetPath, newCommit); err != nil {
-								fmt.Printf("  ! Failed to update %s: %v\n", skill.Name, err)
-							} else {
-								fmt.Printf("  ✓ %s updated\n", skill.Name)
-							}
-							break
-						}
-					}
-				}
-			} else if checkFlag {
-				fmt.Printf("  ✓ %s in %s up to date\n", skill.Name, targetName)
+				hasUpdates = hasUpdates || updates
 			}
 		}
 	}
@@ -449,4 +585,63 @@ func runSkillUpdate(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+func checkSkillUpdates(agentName, scope string, path string, cfg *config.Config, cache *repo.Cache) (bool, error) {
+	skills, err := repo.ListInstalledSkills(path)
+	if err != nil {
+		return false, nil
+	}
+
+	hasUpdates := false
+	label := fmt.Sprintf("%s (%s)", agentName, scope)
+
+	for _, skill := range skills {
+		// Find the source repo
+		var currentCommit string
+		var newCommit string
+		var repoName string
+
+		for rn, info := range cfg.Repos {
+			if info.URL == skill.Grimoire.Source {
+				repoName = rn
+				currentCommit = skill.Grimoire.Commit
+				if cache.Exists(rn) {
+					newCommit, _ = cache.GetCommit(rn)
+				}
+				break
+			}
+		}
+
+		if repoName == "" {
+			continue
+		}
+
+		if currentCommit != newCommit && newCommit != "" {
+			hasUpdates = true
+			if checkFlag {
+				fmt.Printf("  ↻ %s in %s has updates\n", skill.Name, label)
+			} else {
+				// Re-install skill with new commit
+				fmt.Printf("Updating %s in %s...\n", skill.Name, label)
+
+				skills, _ := repo.DiscoverSkills(cache.PathFor(repoName), cfg.Repos[repoName].URL)
+				for _, s := range skills {
+					if s.Name == skill.Name {
+						targetPath := filepath.Join(path, skill.Name)
+						if err := repo.InstallSkill(s, targetPath, newCommit); err != nil {
+							fmt.Printf("  ! Failed to update %s: %v\n", skill.Name, err)
+						} else {
+							fmt.Printf("  ✓ %s updated\n", skill.Name)
+						}
+						break
+					}
+				}
+			}
+		} else if checkFlag {
+			fmt.Printf("  ✓ %s in %s up to date\n", skill.Name, label)
+		}
+	}
+
+	return hasUpdates, nil
 }
