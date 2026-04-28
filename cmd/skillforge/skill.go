@@ -235,47 +235,18 @@ var skillListCmd = &cobra.Command{
 }
 
 func runSkillList(cmd *cobra.Command, args []string) error {
-	cfg, err := loadConfig()
-	if err != nil {
-		return err
-	}
-
 	agentsCfg, err := agents.LoadAgents()
 	if err != nil {
 		return fmt.Errorf("loading agents config: %w", err)
 	}
 
-	var allSkills []SkillOutput
-	_ = cfg // cfg is kept for future repo-based listing
+	var localSkills []SkillOutput
+	var globalSkills []SkillOutput
 
+	// Collect skills grouped by scope: local first, then global
 	for agentName, agent := range agentsCfg.Agents {
 		if agentFlag != "" && agentFlag != agentName {
 			continue
-		}
-
-		// List global skills
-		if shouldListScope(agent.Global, scopeFlag, "global") {
-			if agent.Global != nil {
-				path := agents.ExpandPath(agent.Global.Value)
-				skills, err := repo.ListInstalledSkills(path)
-				if err != nil {
-					if !os.IsNotExist(err) {
-						return fmt.Errorf("listing skills in %s (global): %w", agentName, err)
-					}
-				}
-				for _, skill := range skills {
-					commit := skill.Grimoire.Commit
-					if len(commit) > 7 {
-						commit = commit[:7]
-					}
-					allSkills = append(allSkills, SkillOutput{
-						Name:   skill.Name,
-						Commit: commit,
-						Target: fmt.Sprintf("%s/global", agentName),
-						Source: skill.Grimoire.Source,
-					})
-				}
-			}
 		}
 
 		// List local skills
@@ -293,7 +264,7 @@ func runSkillList(cmd *cobra.Command, args []string) error {
 					if len(commit) > 7 {
 						commit = commit[:7]
 					}
-					allSkills = append(allSkills, SkillOutput{
+					localSkills = append(localSkills, SkillOutput{
 						Name:   skill.Name,
 						Commit: commit,
 						Target: fmt.Sprintf("%s/local", agentName),
@@ -302,7 +273,35 @@ func runSkillList(cmd *cobra.Command, args []string) error {
 				}
 			}
 		}
+
+		// List global skills
+		if shouldListScope(agent.Global, scopeFlag, "global") {
+			if agent.Global != nil {
+				path := agents.ExpandPath(agent.Global.Value)
+				skills, err := repo.ListInstalledSkills(path)
+				if err != nil {
+					if !os.IsNotExist(err) {
+						return fmt.Errorf("listing skills in %s (global): %w", agentName, err)
+					}
+				}
+				for _, skill := range skills {
+					commit := skill.Grimoire.Commit
+					if len(commit) > 7 {
+						commit = commit[:7]
+					}
+					globalSkills = append(globalSkills, SkillOutput{
+						Name:   skill.Name,
+						Commit: commit,
+						Target: fmt.Sprintf("%s/global", agentName),
+						Source: skill.Grimoire.Source,
+					})
+				}
+			}
+		}
 	}
+
+	// Combine: local first, then global
+	allSkills := append(localSkills, globalSkills...)
 
 	fmtmt := parseFormat(formatFlag)
 

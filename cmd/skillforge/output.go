@@ -199,8 +199,24 @@ func formatSkillTable(skills []SkillOutput) string {
 		return "No skills installed."
 	}
 
-	// Sort skills by name
+	// Sort skills: local first, then global, then by name
 	sort.Slice(skills, func(i, j int) bool {
+		// Extract scope from target (e.g., "pi/local" -> "local")
+		scopeI := "global"
+		scopeJ := "global"
+		if strings.Contains(skills[i].Target, "/local") {
+			scopeI = "local"
+		}
+		if strings.Contains(skills[j].Target, "/local") {
+			scopeJ = "local"
+		}
+
+		// Local comes before global
+		if scopeI != scopeJ {
+			return scopeI == "local"
+		}
+
+		// Within same scope, sort by target then name
 		if skills[i].Target != skills[j].Target {
 			return skills[i].Target < skills[j].Target
 		}
@@ -252,11 +268,29 @@ func formatSkillTable(skills []SkillOutput) string {
 
 // formatSkillCompact formats skills in compact format.
 func formatSkillCompact(skills []SkillOutput) string {
+	// Sort: local first, then global, then by name
+	sort.Slice(skills, func(i, j int) bool {
+		scopeI := "global"
+		scopeJ := "global"
+		if strings.Contains(skills[i].Target, "/local") {
+			scopeI = "local"
+		}
+		if strings.Contains(skills[j].Target, "/local") {
+			scopeJ = "local"
+		}
+		if scopeI != scopeJ {
+			return scopeI == "local"
+		}
+		if skills[i].Target != skills[j].Target {
+			return skills[i].Target < skills[j].Target
+		}
+		return skills[i].Name < skills[j].Name
+	})
+
 	var lines []string
 	for _, s := range skills {
 		lines = append(lines, fmt.Sprintf("%s/%s@%s", s.Target, s.Name, s.Commit))
 	}
-	sort.Strings(lines)
 	return strings.Join(lines, "\n")
 }
 
