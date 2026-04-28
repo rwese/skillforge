@@ -12,7 +12,13 @@ A focused CLI for managing agent skills from git repositories.
 
 ## Installation
 
-### Pre-built binary (recommended)
+### Homebrew (macOS/Linux)
+
+```bash
+brew install rwese/skillforge-ng/skillforge
+```
+
+### Pre-built binary
 
 ```bash
 # Clone and run install script
