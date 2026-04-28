@@ -1,48 +1,35 @@
-## Scoped Targets Implementation
+# Skill Sync Feature Implementation
 
-Goal: Implement agent-centric target scoping with global/local paths and a setup wizard.
+## Tasks
 
-### Done
+### Phase 1: Verification First - Add flags to existing sync command
+- [x] Review existing sync.go structure
+- [x] Add `--agent`, `--scope`, `--skip-agent-sync` flags to sync command
+- [x] Verify flags register correctly
 
-- [x] Design finalized
-- [x] Phase 1: Agent config types (internal/agents/)
-- [x] Phase 2: Setup wizard (cmd/skillforge/setup.go)
-- [x] Phase 3: Skill operations use agents config
-- [x] Phase 4: Tests for internal/agents/
+### Phase 2: Core Logic - Implement agent sync detection
+- [x] Collect all installed skills per agent+scope
+- [x] Build union set of all skill names
+- [x] Identify missing skills per agent+scope
+- [x] Print missing skills in dry-run mode
 
-### Remaining
+### Phase 3: Apply Logic - Install missing skills
+- [x] Use existing `InstallSkill` infrastructure from skill.go
+- [x] Track install results
+- [x] Error handling for failed installs
 
-- [ ] Add integration tests for setup wizard
-- [ ] Deprecate old targets system (or keep for backward compat)
+### Phase 4: Polish - Edge cases & tests
+- [x] Empty agent handling (gracefully handles empty/no agents)
+- [x] Verbose output improvements (shows counts, targets)
+- [x] Unit tests for sync logic
 - [ ] Update documentation
 
----
-
-## Implementation Summary
-
-### Files Created
-- `internal/agents/agents.go` - Agent config types + loading
-- `internal/agents/agents_test.go` - Tests
-- `internal/agents/skills.go` - Skill resolution helpers
-- `cmd/skillforge/setup.go` - Setup wizard
-
-### Files Modified
-- `cmd/skillforge/skill.go` - Use agents config instead of targets
-
-### New Commands
-```
-skillforge setup detect   # Auto-detect known agents
-skillforge setup list     # List configured agents
-skillforge setup add      # Add agent manually
-```
-
-### Updated Commands
-```
-skillforge skill list --agent pi --scope global
-skillforge skill install --agent pi --scope local <skill>
-skillforge skill remove --agent pi <skill>
-skillforge skill update --agent pi --scope local
-```
-
-### Config Location
-`~/.config/skillforge/agents.toml`
+## Acceptance Criteria
+- [x] `skillforge sync` syncs repos + updates skills + syncs across agents
+- [x] `skillforge sync --check` shows all three operations preview
+- [x] Scope flag (`--scope global|local|auto`) respects agent config scopes
+- [x] Agent flag (`--agent <name>`) syncs only specific agent
+- [x] No cross-scope contamination (global stays global, local stays local)
+- [x] Handles agents with no skills gracefully
+- [x] Verbose output shows what's happening
+- [x] Tests pass
