@@ -247,14 +247,15 @@ func loadConfig() (*config.Config, error) {
 
 func saveConfig(cfg *config.Config) error {
 	scope := config.ScopeAuto
+	local := false
 	if globalFlag {
 		scope = config.ScopeGlobal
 	} else if localFlag {
 		scope = config.ScopeLocal
+		local = true
+	} else if config.DetectLocalPath() != "" {
+		local = true
 	}
-
-	// Determine if we should save locally
-	local := config.DetectLocalPath() != ""
 
 	loader := config.NewLoader(scope)
 	return loader.Save(cfg, local)

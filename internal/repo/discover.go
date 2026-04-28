@@ -13,25 +13,34 @@ import (
 func DiscoverSkills(cachePath, source string) ([]grimoire.Skill, error) {
 	var skills []grimoire.Skill
 
-	entries, err := os.ReadDir(cachePath)
-	if err != nil {
-		return nil, err
+	// Check multiple possible skill locations
+	locations := []string{
+		cachePath,                               // root level
+		filepath.Join(cachePath, "skills"),      // skills/ subdirectory
+		filepath.Join(cachePath, ".agents", "skills"), // .agents/skills/
 	}
 
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
+	for _, loc := range locations {
+		entries, err := os.ReadDir(loc)
+		if err != nil {
+			continue // Skip if directory doesn't exist
 		}
 
-		skillPath := filepath.Join(cachePath, entry.Name())
-		if isSkillDir(skillPath) {
-			desc := readSkillDescription(skillPath)
-			skills = append(skills, grimoire.Skill{
-				Name:        entry.Name(),
-				Description: desc,
-				Path:        skillPath,
-				Source:      source,
-			})
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				continue
+			}
+
+			skillPath := filepath.Join(loc, entry.Name())
+			if isSkillDir(skillPath) {
+				desc := readSkillDescription(skillPath)
+				skills = append(skills, grimoire.Skill{
+					Name:        entry.Name(),
+					Description: desc,
+					Path:        skillPath,
+					Source:      source,
+				})
+			}
 		}
 	}
 

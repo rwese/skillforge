@@ -49,7 +49,6 @@ const (
 type Loader struct {
 	scope      Scope
 	globalPath string
-	localPath  string
 }
 
 // NewLoader creates a new config loader.
@@ -120,13 +119,11 @@ func (l *Loader) Load() (*Config, error) {
 		}
 	case ScopeAuto:
 		// Load global first, then local overrides
-		if err := l.loadFile(l.globalPath, cfg); err == nil {
-			// Global loaded
-		}
+		_ = l.loadFile(l.globalPath, cfg)
 
 		localPath := DetectLocalPath()
 		if localPath != "" {
-			l.loadFile(localPath, cfg)
+			_ = l.loadFile(localPath, cfg)
 		}
 	}
 
@@ -176,6 +173,21 @@ func (l *Loader) Save(cfg *Config, local bool) error {
 			}
 			path = filepath.Join(localDir, "config.toml")
 		}
+		// When saving locally, merge with existing local config
+		// to preserve global-only data
+		existing := &Config{
+			Targets: make(map[string]Target),
+			Repos:   make(map[string]RepoInfo),
+		}
+		_ = l.loadFile(path, existing)
+		// Merge: new cfg takes precedence for its keys
+		for k, v := range cfg.Targets {
+			existing.Targets[k] = v
+		}
+		for k, v := range cfg.Repos {
+			existing.Repos[k] = v
+		}
+		cfg = existing
 	} else {
 		path = l.globalPath
 		// Ensure directory exists
