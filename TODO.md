@@ -36,12 +36,9 @@ See: [Stability & Quality PRD](./docs/prds/skillforge-ng-stability-quality/READM
 ## v2 Future
 See: [v2 PRD](./docs/prds/skillforge-ng-v2/README.md)
 
-- [ ] Interactive TUI (`skillforge manage`)
-- [ ] `doctor` command for diagnostics
-- [ ] `suggest` command for project analysis
-- [ ] Dirty state detection with tree hashes
-- [ ] `config validate` command
-- [ ] Import/export functionality
+- [ ] `skillforge doctor` command (config, cache, skill health checks)
+- [ ] Dirty state detection (tree_hash in grimoire)
+- [ ] Auto-check on `skill list` and `skill update`
 
 ---
 

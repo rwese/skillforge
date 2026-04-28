@@ -123,6 +123,16 @@ skillforge completion zsh > "${fpath[1]}/_skillforge"
 skillforge completion fish > ~/.config/fish/completions/skillforge.fish
 ```
 
+## Global Flags
+
+```bash
+-n, --dry-run    # Preview changes without applying
+-y, --yes       # Skip confirmations
+-v, --verbose   # Enable debug output
+-g, --global    # Use global config only
+-l, --local     # Use local config only
+```
+
 ## Troubleshooting
 
 ### No skills found
