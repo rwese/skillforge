@@ -359,35 +359,38 @@ func runSkillRemove(cmd *cobra.Command, args []string) error {
 	}
 
 	// Determine paths to remove from
-	removePaths := getRemovePaths(agentsCfg, agentFlag, scopeFlag)
+	allPaths := getRemovePaths(agentsCfg, agentFlag, scopeFlag)
+
+	// Filter to only paths where skill actually exists
+	var removePaths []RemovePath
+	for _, rp := range allPaths {
+		targetPath := filepath.Join(rp.Path, skillName)
+		if _, err := os.Stat(targetPath); err == nil {
+			removePaths = append(removePaths, rp)
+		}
+	}
+
+	if len(removePaths) == 0 {
+		PrintHint(HintSkillNotInstalled)
+		return fmt.Errorf("skill %q not found in any location", skillName)
+	}
 
 	// Confirm if not using --yes
-	if !yesFlag && len(removePaths) > 0 {
+	if !yesFlag {
 		fmt.Printf("Remove skill %q from %d location(s)? ", skillName, len(removePaths))
 		if !confirm("") {
 			return fmt.Errorf("cancelled")
 		}
 	}
 
-	removed := false
 	for _, rp := range removePaths {
 		targetPath := filepath.Join(rp.Path, skillName)
-
-		if _, err := os.Stat(targetPath); os.IsNotExist(err) {
-			continue
-		}
 
 		fmt.Printf("Removing %s from %s...\n", skillName, rp.Label)
 		if err := repo.RemoveSkill(targetPath); err != nil {
 			return fmt.Errorf("removing from %s: %w", rp.Label, err)
 		}
 		fmt.Printf("  ✓ %s removed from %s\n", skillName, rp.Label)
-		removed = true
-	}
-
-	if !removed {
-		PrintHint(HintSkillNotInstalled)
-		return fmt.Errorf("skill %q not found in any location", skillName)
 	}
 
 	return nil
