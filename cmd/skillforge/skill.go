@@ -93,9 +93,19 @@ func runSkillInstall(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("no enabled targets found")
 	}
 
+	// Dry-run mode
+	if dryRunFlag {
+		fmt.Printf("[DRY-RUN] Would install %q to %d target(s): %v\n", skillName, len(targets), targets)
+		return nil
+	}
+
 	// Install to each target
 	for _, targetName := range targets {
-		targetPath := filepath.Join(config.ExpandPath(cfg.Targets[targetName].Path), skillName)
+		targetBasePath := config.ExpandPath(cfg.Targets[targetName].Path)
+		if err := ensureTargetDir(targetBasePath); err != nil {
+			return fmt.Errorf("creating target directory: %w", err)
+		}
+		targetPath := filepath.Join(targetBasePath, skillName)
 
 		// Check for conflicts
 		if _, err := os.Stat(targetPath); err == nil {
@@ -104,8 +114,19 @@ func runSkillInstall(cmd *cobra.Command, args []string) error {
 		}
 
 		fmt.Printf("Installing %s to %s...\n", skillName, targetName)
-		if err := repo.InstallSkill(*targetSkill, targetPath, commit); err != nil {
-			return fmt.Errorf("installing to %s: %w", targetName, err)
+
+		// Use progress callback if verbose
+		installErr := error(nil)
+		if verboseFlag {
+			installErr = repo.InstallSkillWithProgress(*targetSkill, targetPath, commit, func(src, dst string) {
+				verbose("Copied %s -> %s", src, dst)
+			})
+		} else {
+			installErr = repo.InstallSkill(*targetSkill, targetPath, commit)
+		}
+
+		if installErr != nil {
+			return fmt.Errorf("installing to %s: %w", targetName, installErr)
 		}
 		fmt.Printf("  ✓ %s installed to %s\n", skillName, targetName)
 	}
@@ -220,6 +241,14 @@ func runSkillRemove(cmd *cobra.Command, args []string) error {
 
 	// Determine targets to remove from
 	targets := getTargetsToRemove(cfg, targetFlag)
+
+	// Confirm if not using --yes
+	if !yesFlag && len(targets) > 0 {
+		fmt.Printf("Remove skill %q from %d target(s)? ", skillName, len(targets))
+		if !confirm("") {
+			return fmt.Errorf("cancelled")
+		}
+	}
 
 	removed := false
 	for _, targetName := range targets {

@@ -10,6 +10,9 @@ import (
 	"github.com/rwese/skillforge-ng/pkg/grimoire"
 )
 
+// ProgressCallback is called during file copy operations.
+type ProgressCallback func(src, dst string)
+
 // ReadGrimoire reads a .grimoire file from a skill directory.
 func ReadGrimoire(skillPath string) (*grimoire.Grimoire, error) {
 	grimoirePath := filepath.Join(skillPath, ".grimoire")
@@ -42,13 +45,18 @@ func WriteGrimoire(skillPath string, g *grimoire.Grimoire) error {
 
 // InstallSkill copies a skill to a target directory with grimoire metadata.
 func InstallSkill(skill grimoire.Skill, targetPath string, commit string) error {
+	return InstallSkillWithProgress(skill, targetPath, commit, nil)
+}
+
+// InstallSkillWithProgress copies a skill with progress reporting.
+func InstallSkillWithProgress(skill grimoire.Skill, targetPath string, commit string, progress ProgressCallback) error {
 	// Ensure target directory exists
 	if err := os.MkdirAll(targetPath, 0755); err != nil {
 		return fmt.Errorf("creating target directory: %w", err)
 	}
 
 	// Copy skill contents
-	if err := copyDir(skill.Path, targetPath); err != nil {
+	if err := copyDirWithProgress(skill.Path, targetPath, progress); err != nil {
 		return fmt.Errorf("copying skill: %w", err)
 	}
 
@@ -69,6 +77,11 @@ func InstallSkill(skill grimoire.Skill, targetPath string, commit string) error 
 
 // copyDir copies a directory recursively.
 func copyDir(src, dst string) error {
+	return copyDirWithProgress(src, dst, nil)
+}
+
+// copyDirWithProgress copies a directory with optional progress reporting.
+func copyDirWithProgress(src, dst string, progress ProgressCallback) error {
 	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
@@ -85,7 +98,15 @@ func copyDir(src, dst string) error {
 			return os.MkdirAll(dstPath, info.Mode())
 		}
 
-		return copyFile(path, dstPath)
+		if err := copyFile(path, dstPath); err != nil {
+			return err
+		}
+
+		if progress != nil {
+			progress(path, dstPath)
+		}
+
+		return nil
 	})
 }
 

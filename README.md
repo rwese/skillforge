@@ -123,6 +123,35 @@ skillforge completion zsh > "${fpath[1]}/_skillforge"
 skillforge completion fish > ~/.config/fish/completions/skillforge.fish
 ```
 
+## Troubleshooting
+
+### No skills found
+
+1. Check repositories: `skillforge repo list`
+2. Add a repository: `skillforge repo add <url>`
+3. Update repos: `skillforge repo update`
+
+### Permission denied
+
+Ensure the target directory exists and is writable:
+```bash
+mkdir -p ~/.pi/agent/skills/
+```
+
+### Config not found
+
+Use `--local` or `--global` to specify config scope:
+```bash
+skillforge --local skill list
+```
+
+### Verbose debugging
+
+Use `-v` flag for debug output:
+```bash
+skillforge -v skill install docker
+```
+
 ## License
 
 MIT

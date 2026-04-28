@@ -96,8 +96,10 @@ func runRepoAdd(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to discover skills: %w", err)
 	}
 
-	_ = commit // silence unused warning
-	fmt.Printf("✓ Cached %s (%d skills)\n", name, len(skills))
+	if len(commit) > 7 {
+		commit = commit[:7]
+	}
+	fmt.Printf("✓ Cached %s at %s (%d skills)\n", name, commit, len(skills))
 	return nil
 }
 
@@ -164,9 +166,17 @@ func runRepoRemove(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	_, exists := cfg.Repos[name]
+	info, exists := cfg.Repos[name]
 	if !exists {
 		return fmt.Errorf("repository %q not found", name)
+	}
+
+	// Confirm if not using --yes
+	if !yesFlag {
+		fmt.Printf("Remove cached repository %q (%s)? ", name, info.URL)
+		if !confirm("") {
+			return fmt.Errorf("cancelled")
+		}
 	}
 
 	cache := repo.NewCache(config.ExpandPath(cfg.Cache.Path))

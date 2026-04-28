@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"sync"
 	"time"
 )
 
@@ -9,6 +10,8 @@ import (
 type Spinner struct {
 	message string
 	done    chan struct{}
+	stopped bool
+	mu      sync.Mutex
 }
 
 // NewSpinner creates a new spinner with a message.
@@ -39,12 +42,14 @@ func (s *Spinner) Start() {
 
 // Stop stops the spinner and clears the line.
 func (s *Spinner) Stop() {
-	select {
-	case <-s.done:
-	default:
-		close(s.done)
-		fmt.Printf("\r\x1b[2K") // Clear line
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.stopped {
+		return
 	}
+	s.stopped = true
+	close(s.done)
+	fmt.Printf("\r\x1b[2K") // Clear line
 }
 
 // Messagef updates the spinner message.

@@ -138,8 +138,17 @@ func runTargetRemove(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	if _, exists := cfg.Targets[name]; !exists {
+	target, exists := cfg.Targets[name]
+	if !exists {
 		return fmt.Errorf("target %q not found", name)
+	}
+
+	// Confirm if not using --yes
+	if !yesFlag {
+		fmt.Printf("Remove target %q (%s)? ", name, config.ContractPath(target.Path))
+		if !confirm("") {
+			return fmt.Errorf("cancelled")
+		}
 	}
 
 	delete(cfg.Targets, name)

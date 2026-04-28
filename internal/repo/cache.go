@@ -38,12 +38,11 @@ func (c *Cache) Clone(url, branch string) error {
 		return fmt.Errorf("repository %q already cached", name)
 	}
 
-	args := []string{"clone", "--depth", "1", "-b", branch}
-	if branch == "main" {
-		args = []string{"clone", "--depth", "1", url, targetDir}
-	} else {
-		args = append(args, branch, url, targetDir)
+	args := []string{"clone", "--depth", "1"}
+	if branch != "main" {
+		args = append(args, "-b", branch)
 	}
+	args = append(args, url, targetDir)
 
 	cmd := exec.Command("git", args...)
 	cmd.Stdout = os.Stdout
