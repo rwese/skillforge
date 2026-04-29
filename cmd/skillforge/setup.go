@@ -63,18 +63,32 @@ func runSetupDetect(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Run interactive selector
-	selectedNames := agents.SelectAgents(selectableAgents)
+	// With --yes flag, skip interactive selector and use pre-selected agents
+	var selectedNames []string
+	if yesFlag {
+		for _, agent := range selectableAgents {
+			if agent.Selected {
+				selectedNames = append(selectedNames, agent.Name)
+			}
+		}
+		if len(selectedNames) == 0 {
+			fmt.Println("No agents selected (use interactive mode to select agents).")
+			return nil
+		}
+	} else {
+		// Run interactive selector
+		selectedNames = agents.SelectAgents(selectableAgents)
 
-	// User quit
-	if selectedNames == nil {
-		return fmt.Errorf("cancelled")
-	}
+		// User quit
+		if selectedNames == nil {
+			return fmt.Errorf("cancelled")
+		}
 
-	// No agents selected
-	if len(selectedNames) == 0 {
-		fmt.Println("No agents selected. Exiting.")
-		return nil
+		// No agents selected
+		if len(selectedNames) == 0 {
+			fmt.Println("No agents selected. Exiting.")
+			return nil
+		}
 	}
 
 	// Build selected agents config

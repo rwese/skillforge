@@ -162,7 +162,41 @@ func clearScreen() {
 }
 
 func readKey() string {
+	// Read first byte
 	var buf [1]byte
 	os.Stdin.Read(buf[:])
-	return string(buf[:])
+	
+	first := buf[0]
+	
+	// Handle escape sequences (arrow keys)
+	if first == 27 {
+		// Read next two bytes for arrow keys
+		os.Stdin.Read(buf[:])
+		os.Stdin.Read(buf[:])
+		if buf[0] == 65 {
+			return "up"
+		}
+		if buf[0] == 66 {
+			return "down"
+		}
+		if buf[0] == 67 {
+			return "right"
+		}
+		if buf[0] == 68 {
+			return "left"
+		}
+		return ""
+	}
+	
+	// Handle Enter
+	if first == 13 {
+		return "enter"
+	}
+	
+	// Handle Ctrl+C
+	if first == 3 {
+		return "ctrl+c"
+	}
+	
+	return string([]byte{first})
 }

@@ -11,11 +11,15 @@ Allow selective agent activation during `skillforge setup detect` instead of aut
 - [x] Add summary review step (skip with `--yes`)
 
 ### Polish
-- [ ] Update lipgloss styling to match existing color scheme
-- [ ] Handle zero-selection exit gracefully
+- [x] Update lipgloss styling to match existing color scheme
+- [x] Handle zero-selection exit gracefully
 - [ ] Test with existing config (pre-selected behavior)
 
 ### Verification
-- [ ] `go build` succeeds
-- [ ] `go test ./...` passes
+- [x] `go build` succeeds
+- [x] `go test ./...` passes
 - [ ] Manual test: `skillforge setup detect` with interactions
+
+## Completed
+
+- [x] Commit: `579f57b feat(setup): add interactive agent selection to setup detect`
