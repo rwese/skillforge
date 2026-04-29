@@ -14,6 +14,7 @@ import (
 type ProgressCallback func(src, dst string)
 
 // ReadGrimoire reads a .grimoire file from a skill directory.
+// It handles both the legacy [metadata] section format and the newer root-level format.
 func ReadGrimoire(skillPath string) (*grimoire.Grimoire, error) {
 	grimoirePath := filepath.Join(skillPath, ".grimoire")
 	data, err := os.ReadFile(grimoirePath)
@@ -24,6 +25,30 @@ func ReadGrimoire(skillPath string) (*grimoire.Grimoire, error) {
 		return nil, err
 	}
 
+	// First try parsing with [metadata] section (legacy format)
+	// Then fall back to root-level fields (new format)
+	
+	// Try legacy [metadata] section format
+	var legacy struct {
+		Metadata struct {
+			Version     int    `toml:"version"`
+			Source      string `toml:"source"`
+			Commit      string `toml:"commit"`
+			InstalledAt string `toml:"installed_at"`
+		} `toml:"metadata"`
+	}
+	
+	if _, err := toml.Decode(string(data), &legacy); err == nil && legacy.Metadata.Commit != "" {
+		t, _ := time.Parse(time.RFC3339, legacy.Metadata.InstalledAt)
+		return &grimoire.Grimoire{
+			Version:     legacy.Metadata.Version,
+			Source:      legacy.Metadata.Source,
+			Commit:      legacy.Metadata.Commit,
+			InstalledAt: t,
+		}, nil
+	}
+	
+	// Try new root-level format
 	var g grimoire.Grimoire
 	if _, err := toml.Decode(string(data), &g); err != nil {
 		return nil, err
