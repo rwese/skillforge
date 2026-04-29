@@ -1,2 +1,7 @@
 /skillforge
 *.sum
+
+# Agent skill directories (installed by skillforge)
+.claude
+.codex
+.pi

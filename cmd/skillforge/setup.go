@@ -32,68 +32,104 @@ var setupDetectCmd = &cobra.Command{
 }
 
 func runSetupDetect(cmd *cobra.Command, args []string) error {
-	fmt.Println("Detecting known agents...")
+	// Load existing config to know which agents are already configured
+	existingCfg, err := agents.LoadAgents()
+	if err != nil {
+		return fmt.Errorf("loading existing config: %w", err)
+	}
 
+	// Detect which agent skill directories exist
 	detected := agents.DetectAgents()
 
-	if len(detected) == 0 {
-		fmt.Println("No known agents detected.")
+	// Build selectable agent list
+	var selectableAgents []agents.SelectableAgent
+	for name, def := range agents.KnownAgents {
+		agent := agents.SelectableAgent{
+			Name:          name,
+			DefaultGlobal: def.DefaultGlobal,
+			DefaultLocal:  def.DefaultLocal,
+			Detected:      detected[name],
+			Configured:    existingCfg.Agents[name].Global != nil,
+			// Pre-select detected agents (default paths exist)
+			Selected: detected[name],
+		}
+		selectableAgents = append(selectableAgents, agent)
+	}
+
+	if len(selectableAgents) == 0 {
+		fmt.Println("No known agents configured.")
 		fmt.Println("\nYou can add agents manually with:")
 		fmt.Println("  skillforge setup add <name>")
 		return nil
 	}
 
-	fmt.Printf("\nDetected %d agent(s):\n", len(detected))
-	for name := range detected {
-		def := agents.KnownAgents[name]
-		globalPath := agents.ExpandPath(def.DefaultGlobal)
-		fmt.Printf("  • %s (global: %s)\n", name, agents.ContractPath(globalPath))
-	}
+	// Run interactive selector
+	selectedNames := agents.SelectAgents(selectableAgents)
 
-	// Confirm before saving
-	if !confirm("\nAdd these agents to global config?") {
+	// User quit
+	if selectedNames == nil {
 		return fmt.Errorf("cancelled")
 	}
 
-	// Build agents config
-	cfg := &agents.AgentsConfig{
-		Agents: make(map[string]agents.Agent),
+	// No agents selected
+	if len(selectedNames) == 0 {
+		fmt.Println("No agents selected. Exiting.")
+		return nil
 	}
 
-	for name := range detected {
+	// Build selected agents config
+	selectedCfg := &agents.AgentsConfig{
+		Agents: make(map[string]agents.Agent),
+	}
+	for _, name := range selectedNames {
 		def := agents.KnownAgents[name]
-		cfg.Agents[name] = agents.Agent{
+		selectedCfg.Agents[name] = agents.Agent{
 			Name:   name,
 			Global: &agents.Path{Value: def.DefaultGlobal},
 			Local:  &agents.Path{Value: def.DefaultLocal},
 		}
 	}
 
+	// Show summary unless --yes flag is set
+	if !yesFlag {
+		fmt.Println("\n" + Highlight.Render("Selected agents to configure:"))
+		for name, agent := range selectedCfg.Agents {
+			fmt.Printf("  • %s\n", name)
+			if agent.Global != nil {
+				fmt.Printf("      global: %s\n", agents.ContractPath(agents.ExpandPath(agent.Global.Value)))
+			}
+			if agent.Local != nil {
+				fmt.Printf("      local:  %s\n", agents.ContractPath(agents.ExpandPath(agent.Local.Value)))
+			}
+		}
+
+		fmt.Println()
+		if !confirm("Save to global config?") {
+			return fmt.Errorf("cancelled")
+		}
+	}
+
+	// Merge with existing config and save
+	mergedCfg := &agents.AgentsConfig{
+		Agents: make(map[string]agents.Agent),
+	}
+
+	// Start with existing
+	for k, v := range existingCfg.Agents {
+		mergedCfg.Agents[k] = v
+	}
+
+	// Override selected agents
+	for k, v := range selectedCfg.Agents {
+		mergedCfg.Agents[k] = v
+	}
+
 	// Save to global config
-	if err := agents.SaveAgents(cfg, agents.ScopeGlobal); err != nil {
+	if err := agents.SaveAgents(mergedCfg, agents.ScopeGlobal); err != nil {
 		return fmt.Errorf("saving agents config: %w", err)
 	}
 
-	fmt.Println("\n✓ Agents configured successfully.")
-	fmt.Println("\nConfigured agents:")
-	for name, agent := range cfg.Agents {
-		globalVal := ""
-		if agent.Global != nil {
-			globalVal = agents.ContractPath(agents.ExpandPath(agent.Global.Value))
-		}
-		localVal := ""
-		if agent.Local != nil {
-			localVal = agents.ContractPath(agents.ExpandPath(agent.Local.Value))
-		}
-		fmt.Printf("  • %s\n", name)
-		if globalVal != "" {
-			fmt.Printf("      global: %s\n", globalVal)
-		}
-		if localVal != "" {
-			fmt.Printf("      local:  %s\n", localVal)
-		}
-	}
-
+	fmt.Println("\n" + Success.Render("✓") + " Agents configured successfully.")
 	return nil
 }
 
