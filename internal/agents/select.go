@@ -3,9 +3,7 @@ package agents
 import (
 	"fmt"
 	"os"
-	"strings"
 
-	"github.com/charmbracelet/lipgloss"
 	"golang.org/x/term"
 )
 
@@ -19,61 +17,17 @@ type SelectableAgent struct {
 	Configured    bool  // True if already in config
 }
 
-// Checkbox styles
-var (
-	checkboxStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#ECF0F1"))
-
-	selectedStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#2ECC71")).
-			Bold(true)
-
-	deselectedStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#7F8C8D"))
-
-	selectedIndicator = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#2ECC71"))
-
-	deselectedIndicator = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#7F8C8D"))
-
-	helpStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#7F8C8D"))
-
-	detectedBadge = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#3498DB"))
-
-	configuredBadge = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#2ECC71"))
-
-	dimBadge = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#7F8C8D"))
-
-	cursorPrefix = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#2ECC71"))
-
-	itemLine = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#ECF0F1"))
-)
-
 // SelectAgents displays an interactive checkbox selector for agents.
 // Returns the list of agents the user selected.
 func SelectAgents(agents []SelectableAgent) []string {
-	// Get terminal size
-	width, height, err := term.GetSize(int(os.Stdout.Fd()))
-	if err != nil {
-		width, height = 80, 24 // Default fallback
-	}
-
 	// Set terminal to raw mode for byte-by-byte reading
 	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
 	if err != nil {
-		// Fallback: try without raw mode
 		return selectAgentsFallback(agents)
 	}
 	defer term.Restore(int(os.Stdin.Fd()), oldState)
 
-	return selectAgentsLoop(agents, width, height)
+	return selectAgentsLoop(agents)
 }
 
 func selectAgentsFallback(agents []SelectableAgent) []string {
@@ -82,11 +36,9 @@ func selectAgentsFallback(agents []SelectableAgent) []string {
 		selected[i] = agents[i].Selected
 	}
 
-	cursor := 0
-
 	for {
 		clearScreen()
-		renderSelector(agents, selected, cursor, 80, 24)
+		renderSelector(agents, selected, 0)
 		fmt.Print("\nSelect agents and press Enter, or q to quit: ")
 
 		var input string
@@ -115,7 +67,7 @@ func selectAgentsFallback(agents []SelectableAgent) []string {
 	}
 }
 
-func selectAgentsLoop(agents []SelectableAgent, width, height int) []string {
+func selectAgentsLoop(agents []SelectableAgent) []string {
 	selected := make([]bool, len(agents))
 	for i := range agents {
 		selected[i] = agents[i].Selected
@@ -125,7 +77,7 @@ func selectAgentsLoop(agents []SelectableAgent, width, height int) []string {
 
 	for {
 		clearScreen()
-		renderSelector(agents, selected, cursor, width, height)
+		renderSelector(agents, selected, cursor)
 
 		key := readKey()
 		switch key {
@@ -163,76 +115,47 @@ func selectAgentsLoop(agents []SelectableAgent, width, height int) []string {
 	}
 }
 
-func renderSelector(agents []SelectableAgent, selected []bool, cursor int, width, height int) {
-	// Use available width for content
-	contentWidth := width - 4 // padding
+func renderSelector(agents []SelectableAgent, selected []bool, cursor int) {
+	fmt.Println()
+	fmt.Println("  Select agents to configure")
+	fmt.Println("  ─────────────────────────")
 
-	var sb strings.Builder
+	fmt.Println()
+	fmt.Println("  [↑/↓] Navigate   [Space] Toggle   [Enter] Confirm   [Q] Quit")
+	fmt.Println("  [A] Toggle all  [S] Select all  [N] Deselect all")
+	fmt.Println()
 
-	// Title bar
-	sb.WriteString(helpStyle.Render("\n  ── Select agents to configure ──\n\n"))
-
-	// Help text
-	sb.WriteString(helpStyle.Render("  [↑/↓] Navigate  [Space] Toggle  [Enter] Confirm  [Q] Quit\n"))
-	sb.WriteString(helpStyle.Render("  [A] Toggle all  [S] Select all  [N] Deselect all\n"))
-	sb.WriteString("\n")
-
-	// Render each agent
+	// Simple columnar output - each agent on its own line
 	for i, agent := range agents {
-		// Build the line piece by piece
-		var line strings.Builder
-
 		// Cursor indicator
+		prefix := "    "
 		if i == cursor {
-			line.WriteString(cursorPrefix.Render("  ▸ "))
-		} else {
-			line.WriteString("    ")
+			prefix = "  > "
 		}
 
 		// Checkbox
+		checkbox := "[ ]"
 		if selected[i] {
-			line.WriteString(selectedIndicator.Render("[✓]"))
-		} else {
-			line.WriteString(deselectedIndicator.Render("[ ]"))
-		}
-		line.WriteString("  ")
-
-		// Agent name
-		if selected[i] {
-			line.WriteString(selectedStyle.Render(agent.Name))
-		} else {
-			line.WriteString(checkboxStyle.Render(agent.Name))
+			checkbox = "[x]"
 		}
 
-		// Path (truncated if needed)
-		globalPath := ContractPath(ExpandPath(agent.DefaultGlobal))
-		pathLen := lipgloss.Width(globalPath)
-		availableForPath := contentWidth - lipgloss.Width(line.String()) - 4
-
-		if pathLen > availableForPath {
-			// Truncate path
-			maxPathLen := availableForPath - 3
-			if maxPathLen > 0 {
-				globalPath = globalPath[:maxPathLen] + "…"
-			}
+		// Path (shortened)
+		path := ContractPath(ExpandPath(agent.DefaultGlobal))
+		if len(path) > 30 {
+			path = path[:27] + "..."
 		}
-		line.WriteString("  ")
-		line.WriteString(dimBadge.Render(globalPath))
 
-		// Badges
+		// Badge
+		badge := ""
 		if agent.Configured {
-			line.WriteString(" ")
-			line.WriteString(configuredBadge.Render("●"))
+			badge = " [configured]"
 		} else if agent.Detected {
-			line.WriteString(" ")
-			line.WriteString(detectedBadge.Render("○"))
+			badge = " [detected]"
 		}
 
-		sb.WriteString(line.String())
-		sb.WriteString("\n")
+		// Simple row without padding
+		fmt.Printf("%s%s %s %s%s\n", prefix, checkbox, agent.Name, path, badge)
 	}
-
-	fmt.Print(sb.String())
 }
 
 func clearScreen() {
