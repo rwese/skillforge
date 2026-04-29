@@ -188,8 +188,8 @@ func readKey() string {
 		return ""
 	}
 	
-	// Handle Enter
-	if first == 13 {
+	// Handle Enter (both \r and \n)
+	if first == 13 || first == 10 {
 		return "enter"
 	}
 	
