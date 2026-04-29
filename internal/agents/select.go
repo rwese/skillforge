@@ -2,9 +2,9 @@ package agents
 
 import (
 	"fmt"
-	"os"
 
-	"golang.org/x/term"
+	"github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 // SelectableAgent represents an agent that can be toggled in the selector.
@@ -17,185 +17,170 @@ type SelectableAgent struct {
 	Configured    bool  // True if already in config
 }
 
-// SelectAgents displays an interactive checkbox selector for agents.
-// Returns the list of agents the user selected.
-func SelectAgents(agents []SelectableAgent) []string {
-	// Set terminal to raw mode for byte-by-byte reading
-	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
-	if err != nil {
-		return selectAgentsFallback(agents)
-	}
-	defer term.Restore(int(os.Stdin.Fd()), oldState)
-
-	return selectAgentsLoop(agents)
+// Bubbletea model
+type model struct {
+	agents   []SelectableAgent
+	selected []bool
+	cursor   int
+	quitting bool
 }
 
-func selectAgentsFallback(agents []SelectableAgent) []string {
+func initialModel(agents []SelectableAgent) model {
 	selected := make([]bool, len(agents))
 	for i := range agents {
 		selected[i] = agents[i].Selected
 	}
-
-	for {
-		clearScreen()
-		renderSelector(agents, selected, 0)
-		fmt.Print("\nSelect agents and press Enter, or q to quit: ")
-
-		var input string
-		fmt.Scanln(&input)
-
-		switch input {
-		case "q", "Q":
-			return nil
-		case "":
-			var result []string
-			for i, s := range selected {
-				if s {
-					result = append(result, agents[i].Name)
-				}
-			}
-			return result
-		case "n", "N":
-			for i := range selected {
-				selected[i] = false
-			}
-		case "s", "S":
-			for i := range selected {
-				selected[i] = true
-			}
-		}
+	return model{
+		agents:   agents,
+		selected: selected,
+		cursor:   0,
 	}
 }
 
-func selectAgentsLoop(agents []SelectableAgent) []string {
-	selected := make([]bool, len(agents))
-	for i := range agents {
-		selected[i] = agents[i].Selected
-	}
+func (m model) Init() tea.Cmd {
+	return nil
+}
 
-	cursor := 0
-
-	for {
-		clearScreen()
-		renderSelector(agents, selected, cursor)
-
-		key := readKey()
-		switch key {
+func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "ctrl+c", "q":
+			m.quitting = true
+			return m, tea.Quit
 		case "up", "k":
-			cursor = (cursor - 1 + len(agents)) % len(agents)
+			m.cursor--
+			if m.cursor < 0 {
+				m.cursor = len(m.agents) - 1
+			}
 		case "down", "j":
-			cursor = (cursor + 1) % len(agents)
+			m.cursor++
+			if m.cursor >= len(m.agents) {
+				m.cursor = 0
+			}
 		case " ":
-			selected[cursor] = !selected[cursor]
+			m.selected[m.cursor] = !m.selected[m.cursor]
 		case "a":
-			for i := range selected {
-				if agents[i].Configured {
-					selected[i] = !selected[i]
+			for i := range m.selected {
+				if m.agents[i].Configured {
+					m.selected[i] = !m.selected[i]
 				}
 			}
 		case "s":
-			for i := range selected {
-				selected[i] = true
+			for i := range m.selected {
+				m.selected[i] = true
 			}
 		case "n":
-			for i := range selected {
-				selected[i] = false
+			for i := range m.selected {
+				m.selected[i] = false
 			}
 		case "enter":
-			var result []string
-			for i, s := range selected {
-				if s {
-					result = append(result, agents[i].Name)
-				}
-			}
-			return result
-		case "q", "ctrl+c":
-			return nil
+			return m, tea.Quit
 		}
 	}
+	return m, nil
 }
 
-func renderSelector(agents []SelectableAgent, selected []bool, cursor int) {
-	fmt.Println()
-	fmt.Println("  Select agents to configure")
-	fmt.Println("  ─────────────────────────")
+func (m model) View() string {
+	var s string
 
-	fmt.Println()
-	fmt.Println("  [↑/↓] Navigate   [Space] Toggle   [Enter] Confirm   [Q] Quit")
-	fmt.Println("  [A] Toggle all  [S] Select all  [N] Deselect all")
-	fmt.Println()
+	s += "\n"
+	s += headerStyle.Render("  Select agents to configure") + "\n"
+	s += headerStyle.Render("  ─────────────────────────") + "\n"
+	s += "\n"
+	s += helpStyle.Render("  ↑↓ Navigate   Space Toggle   Enter Confirm   Q Quit") + "\n"
+	s += helpStyle.Render("  A Toggle all   S Select all   N Deselect all") + "\n"
+	s += "\n"
 
-	// Simple columnar output - each agent on its own line
-	for i, agent := range agents {
-		// Cursor indicator
-		prefix := "    "
-		if i == cursor {
-			prefix = "  > "
+	for i, agent := range m.agents {
+		cursor := "  "
+		if i == m.cursor {
+			cursor = cursorStyle.Render(" ▸")
 		}
 
-		// Checkbox
 		checkbox := "[ ]"
-		if selected[i] {
-			checkbox = "[x]"
+		if m.selected[i] {
+			checkbox = selectedStyle.Render("[✓]")
 		}
 
-		// Path (shortened)
+		name := agent.Name
+		nameStyle := lipgloss.NewStyle()
+		if m.selected[i] {
+			nameStyle = selectedStyle
+		}
+
 		path := ContractPath(ExpandPath(agent.DefaultGlobal))
-		if len(path) > 30 {
-			path = path[:27] + "..."
-		}
 
-		// Badge
+		// Determine badge
 		badge := ""
 		if agent.Configured {
-			badge = " [configured]"
+			badge = " " + configuredStyle.Render("●")
 		} else if agent.Detected {
-			badge = " [detected]"
+			badge = " " + detectedStyle.Render("○")
 		}
 
-		// Simple row without padding
-		fmt.Printf("%s%s %s %s%s\n", prefix, checkbox, agent.Name, path, badge)
+		// Use lipgloss for proper width calculations
+		namePadded := nameStyle.Width(10).Render(name)
+		pathPadded := lipgloss.NewStyle().Width(30).Render(path)
+
+		s += fmt.Sprintf("%s %s %s %s%s\n", cursor, checkbox, namePadded, pathPadded, badge)
 	}
+
+	s += "\n"
+
+	return s
 }
 
-func clearScreen() {
-	fmt.Print("\033[2J\033[H")
-}
+// Styles
+var (
+	headerStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#2ECC71")).
+			Bold(true)
 
-func readKey() string {
-	var buf [1]byte
-	os.Stdin.Read(buf[:])
+	helpStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#7F8C8D"))
 
-	first := buf[0]
+	cursorStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#2ECC71")).
+			Bold(true)
 
-	// Handle escape sequences (arrow keys)
-	if first == 27 {
-		os.Stdin.Read(buf[:])
-		if buf[0] == 91 {
-			os.Stdin.Read(buf[:])
-			switch buf[0] {
-			case 65:
-				return "up"
-			case 66:
-				return "down"
-			case 67:
-				return "right"
-			case 68:
-				return "left"
-			}
+	selectedStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#2ECC71"))
+
+	configuredStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#2ECC71"))
+
+	detectedStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#3498DB"))
+)
+
+// SelectAgents displays an interactive checkbox selector for agents.
+// Returns the list of agents the user selected.
+func SelectAgents(agents []SelectableAgent) []string {
+	if len(agents) == 0 {
+		return nil
+	}
+
+	m := initialModel(agents)
+	p := tea.NewProgram(m)
+
+	finalModel, err := p.Run()
+	if err != nil {
+		return nil
+	}
+
+	result := finalModel.(model)
+
+	if result.quitting {
+		return nil
+	}
+
+	var selected []string
+	for i, s := range result.selected {
+		if s {
+			selected = append(selected, result.agents[i].Name)
 		}
-		return ""
 	}
 
-	// Handle Enter
-	if first == 13 || first == 10 {
-		return "enter"
-	}
-
-	// Handle Ctrl+C
-	if first == 3 {
-		return "ctrl+c"
-	}
-
-	return string([]byte{first})
+	return selected
 }
