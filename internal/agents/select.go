@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"golang.org/x/term"
 )
 
 // SelectableAgent represents an agent that can be toggled in the selector.
@@ -52,6 +53,58 @@ var (
 // SelectAgents displays an interactive checkbox selector for agents.
 // Returns the list of agents the user selected.
 func SelectAgents(agents []SelectableAgent) []string {
+	// Set terminal to raw mode for byte-by-byte reading
+	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
+	if err != nil {
+		// Fallback: try without raw mode
+		return selectAgentsFallback(agents)
+	}
+	defer term.Restore(int(os.Stdin.Fd()), oldState)
+
+	return selectAgentsLoop(agents)
+}
+
+func selectAgentsFallback(agents []SelectableAgent) []string {
+	// Fallback without raw mode - uses buffered input
+	selected := make([]bool, len(agents))
+	for i := range agents {
+		selected[i] = agents[i].Selected
+	}
+
+	cursor := 0
+
+	for {
+		clearScreen()
+		renderSelector(agents, selected, cursor)
+		fmt.Print("\nSelect agents and press Enter, or q to quit: ")
+
+		var input string
+		fmt.Scanln(&input)
+
+		switch input {
+		case "q", "Q":
+			return nil
+		case "":
+			var result []string
+			for i, s := range selected {
+				if s {
+					result = append(result, agents[i].Name)
+				}
+			}
+			return result
+		case "n", "N":
+			for i := range selected {
+				selected[i] = false
+			}
+		case "s", "S":
+			for i := range selected {
+				selected[i] = true
+			}
+		}
+	}
+}
+
+func selectAgentsLoop(agents []SelectableAgent) []string {
 	selected := make([]bool, len(agents))
 	for i := range agents {
 		selected[i] = agents[i].Selected
@@ -162,41 +215,39 @@ func clearScreen() {
 }
 
 func readKey() string {
-	// Read first byte
 	var buf [1]byte
 	os.Stdin.Read(buf[:])
-	
+
 	first := buf[0]
-	
+
 	// Handle escape sequences (arrow keys)
 	if first == 27 {
-		// Read next two bytes for arrow keys
 		os.Stdin.Read(buf[:])
-		os.Stdin.Read(buf[:])
-		if buf[0] == 65 {
-			return "up"
-		}
-		if buf[0] == 66 {
-			return "down"
-		}
-		if buf[0] == 67 {
-			return "right"
-		}
-		if buf[0] == 68 {
-			return "left"
+		if buf[0] == 91 {
+			os.Stdin.Read(buf[:])
+			switch buf[0] {
+			case 65:
+				return "up"
+			case 66:
+				return "down"
+			case 67:
+				return "right"
+			case 68:
+				return "left"
+			}
 		}
 		return ""
 	}
-	
-	// Handle Enter (both \r and \n)
+
+	// Handle Enter
 	if first == 13 || first == 10 {
 		return "enter"
 	}
-	
+
 	// Handle Ctrl+C
 	if first == 3 {
 		return "ctrl+c"
 	}
-	
+
 	return string([]byte{first})
 }

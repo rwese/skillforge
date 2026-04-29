@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
 	"os"
 	"strings"
@@ -85,9 +84,13 @@ func confirm(prompt string) bool {
 	}
 
 	fmt.Printf("%s [y/N] ", prompt)
-	reader := bufio.NewReader(os.Stdin)
-	answer, _ := reader.ReadString('\n')
-	answer = strings.TrimSpace(strings.ToLower(answer))
+
+	// Read single character from stdin (works with raw mode)
+	var buf [1]byte
+	os.Stdin.Read(buf[:])
+	answer := strings.ToLower(string(buf[:]))
+	fmt.Println() // newline after input
+
 	return answer == "y" || answer == "yes"
 }
 
