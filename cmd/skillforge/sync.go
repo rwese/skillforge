@@ -98,7 +98,7 @@ func runAgentSync(cmd *cobra.Command, args []string) error {
 
 	fmt.Printf("  Found %d unique skills across repositories\n", len(skillCatalog))
 
-	// Collect installed skills per agent+scope
+	// Collect installed skills per agent+scope (only for existing directories)
 	installedSkills := make(map[string]map[string]bool) // key: "agent/scope"
 	for agentName, agent := range agentsCfg.Agents {
 		if syncAgentFlag != "" && syncAgentFlag != agentName {
@@ -107,14 +107,20 @@ func runAgentSync(cmd *cobra.Command, args []string) error {
 
 		// Global scope
 		if shouldSyncScope(agent.Global, syncScopeFlag, "global") && agent.Global != nil {
-			key := fmt.Sprintf("%s/global", agentName)
-			installedSkills[key] = collectSkillNames(agents.ExpandPath(agent.Global.Value))
+			path := agents.ExpandPath(agent.Global.Value)
+			if skills := collectSkillNames(path); skills != nil {
+				key := fmt.Sprintf("%s/global", agentName)
+				installedSkills[key] = skills
+			}
 		}
 
 		// Local scope
 		if shouldSyncScope(agent.Local, syncScopeFlag, "local") && agent.Local != nil {
-			key := fmt.Sprintf("%s/local", agentName)
-			installedSkills[key] = collectSkillNames(agents.ExpandPath(agent.Local.Value))
+			path := agents.ExpandPath(agent.Local.Value)
+			if skills := collectSkillNames(path); skills != nil {
+				key := fmt.Sprintf("%s/local", agentName)
+				installedSkills[key] = skills
+			}
 		}
 	}
 
@@ -261,12 +267,16 @@ func buildSkillCatalog(cfg *config.Config) (map[string]SkillInfo, error) {
 }
 
 // collectSkillNames returns a set of skill names installed at a path.
+// Returns nil if the directory doesn't exist.
 func collectSkillNames(path string) map[string]bool {
 	skills := make(map[string]bool)
 
 	entries, err := os.ReadDir(path)
 	if err != nil {
-		if !os.IsNotExist(err) && verboseFlag {
+		if os.IsNotExist(err) {
+			return nil // Directory doesn't exist - return nil to indicate invalid target
+		}
+		if verboseFlag {
 			fmt.Printf("[DEBUG] Error reading directory %s: %v\n", path, err)
 		}
 		return skills

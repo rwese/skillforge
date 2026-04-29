@@ -8,10 +8,10 @@ import (
 
 // TestCollectSkillNames tests skill name collection from directories.
 func TestCollectSkillNames(t *testing.T) {
-	// Test with non-existent directory
+	// Test with non-existent directory - should return nil
 	skills := collectSkillNames("/nonexistent/path")
-	if len(skills) != 0 {
-		t.Errorf("expected empty map for nonexistent path, got %d", len(skills))
+	if skills != nil {
+		t.Errorf("expected nil for nonexistent path, got map with %d entries", len(skills))
 	}
 }
 
