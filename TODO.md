@@ -4,40 +4,41 @@ Allow selective agent activation during `skillforge setup detect` instead of aut
 
 ## Status: Complete ✅
 
-### Verified via Automation
+### Verified via tmux Testing
 
-| Test | Status |
-|------|--------|
-| `go build` | ✅ |
-| `go test ./...` | ✅ |
-| `--yes` flag skips interactive | ✅ |
-| UI renders on startup | ✅ |
-| Character keys read (n/s keys) | ✅ |
-| Enter key handling | ✅ (both \r and \n) |
-
-### Verified via Manual Testing (Required for TUIs)
-
-| Test | Notes |
-|------|-------|
-| Arrow key navigation | Requires real terminal |
-| Space to toggle item | Requires real terminal |
-| Full flow: select → confirm → save | Requires real terminal |
+| Test | Status | Notes |
+|------|--------|-------|
+| `go build` | ✅ | |
+| `go test ./...` | ✅ | All 6 packages pass |
+| TUI renders | ✅ | Shows agent list with checkboxes |
+| Arrow keys | ✅ | Move cursor up/down |
+| Space | ✅ | Toggle selected item |
+| `n` key | ✅ | Deselect all |
+| `s` key | ✅ | Select all |
+| Enter | ✅ | Confirm selection |
+| Summary prompt | ✅ | Shows selected agents |
+| `y` confirm | ✅ | Saves to config |
+| `--yes` flag | ✅ | Skips interactive mode |
 
 ## Commits
 
-- `579f57b` feat(setup): add interactive agent selection to setup detect
-- `4afa957` test(agents): add unit tests for selectable agent logic
-- `de47aab` fix(setup): skip interactive selector with --yes flag
-- `472d22f` docs: update TODO with verification status
-- `43ad8b8` fix(agents): handle both \r and \n for Enter key
+| Commit | Description |
+|--------|-------------|
+| `579f57b` | feat(setup): add interactive agent selection |
+| `4afa957` | test(agents): add unit tests |
+| `de47aab` | fix(setup): skip interactive with --yes |
+| `472d22f` | docs: update TODO |
+| `43ad8b8` | fix(agents): handle \r and \n for Enter |
+| `be4e200` | docs: mark feature complete |
+| `8103fd2` | fix(tui): use raw terminal mode for tmux |
 
 ## Usage
 
 ```bash
-# Interactive mode (default)
+# Interactive mode
 skillforge setup detect
 
-# Non-interactive (use defaults, skip confirmation)
+# Non-interactive
 skillforge setup detect --yes
 ```
 
@@ -46,7 +47,7 @@ skillforge setup detect --yes
 | Key | Action |
 |-----|--------|
 | ↑/↓ | Navigate |
-| Space | Toggle selection |
+| Space | Toggle |
 | a | Toggle all configured |
 | s | Select all |
 | n | Deselect all |
