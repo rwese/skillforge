@@ -47,52 +47,19 @@ func init() {
 }
 
 var skillInstallCmd = &cobra.Command{
-	Use:   "install [name]",
-	Short: "Install a skill",
-	Args:  cobra.ExactArgs(1),
+	Use:   "install [name]...",
+	Short: "Install one or more skills",
+	Args:  cobra.MinimumNArgs(1),
 	RunE:  runSkillInstall,
 }
 
 func runSkillInstall(cmd *cobra.Command, args []string) error {
-	skillName := args[0]
 	cfg, err := loadConfig()
 	if err != nil {
 		return err
 	}
 
 	cache := repo.NewCache(config.ExpandPath(cfg.Cache.Path))
-
-	// Find the skill across all repos
-	var targetSkill *grimoire.Skill
-	var commit string
-
-	for repoName, info := range cfg.Repos {
-		if !cache.Exists(repoName) {
-			continue
-		}
-
-		skills, err := repo.DiscoverSkills(cache.PathFor(repoName), info.URL)
-		if err != nil {
-			continue
-		}
-
-		for i := range skills {
-			if skills[i].Name == skillName {
-				targetSkill = &skills[i]
-				commit, _ = cache.GetCommit(repoName)
-				break
-			}
-		}
-
-		if targetSkill != nil {
-			break
-		}
-	}
-
-	if targetSkill == nil {
-		PrintHint(HintRepoNotCached)
-		return fmt.Errorf("skill %q not found in any cached repository", skillName)
-	}
 
 	// Determine paths to install to
 	installPaths, err := getInstallPaths(agentFlag, scopeFlag)
@@ -101,33 +68,72 @@ func runSkillInstall(cmd *cobra.Command, args []string) error {
 	}
 
 	if len(installPaths) == 0 {
-		err := fmt.Errorf("no install paths found")
 		PrintHint(HintNoTargets)
-		return err
+		return fmt.Errorf("no install paths found")
 	}
 
-	// Dry-run mode
-	if dryRunFlag {
-		fmt.Printf("[DRY-RUN] Would install %q to %d path(s): %v\n", skillName, len(installPaths), installPaths)
-		return nil
-	}
+	// Process each skill
+	var errors []error
+	for _, skillName := range args {
+		fmt.Printf("\n=== Installing %s ===\n", skillName)
 
-	// Install to each path
-	for _, ip := range installPaths {
-		if err := ensureTargetDir(ip.Path); err != nil {
-			return fmt.Errorf("creating target directory: %w", err)
+		// Find the skill across all repos
+		var targetSkill *grimoire.Skill
+		var commit string
+
+		for repoName, info := range cfg.Repos {
+			if !cache.Exists(repoName) {
+				continue
+			}
+
+			skills, err := repo.DiscoverSkills(cache.PathFor(repoName), info.URL)
+			if err != nil {
+				continue
+			}
+
+			for i := range skills {
+				if skills[i].Name == skillName {
+					targetSkill = &skills[i]
+					commit, _ = cache.GetCommit(repoName)
+					break
+				}
+			}
+
+			if targetSkill != nil {
+				break
+			}
 		}
-		targetPath := filepath.Join(ip.Path, skillName)
 
-		// Check for conflicts
-		if _, err := os.Stat(targetPath); err == nil {
-			fmt.Printf("  ! %s already exists in %s, skipping\n", skillName, ip.Label)
+		if targetSkill == nil {
+			err := fmt.Errorf("skill %q not found in any cached repository", skillName)
+			PrintHint(HintRepoNotCached)
+			errors = append(errors, err)
 			continue
 		}
 
-		fmt.Printf("Installing %s to %s...\n", skillName, ip.Label)
+		// Dry-run mode
+		if dryRunFlag {
+			fmt.Printf("[DRY-RUN] Would install %q to %d path(s): %v\n", skillName, len(installPaths), installPaths)
+			continue
+		}
 
-		// Use progress callback if verbose
+		// Install to each path
+		for _, ip := range installPaths {
+			if err := ensureTargetDir(ip.Path); err != nil {
+				errors = append(errors, fmt.Errorf("creating target directory for %s: %w", ip.Label, err))
+				continue
+			}
+			targetPath := filepath.Join(ip.Path, skillName)
+
+			// Check for conflicts
+			if _, err := os.Stat(targetPath); err == nil {
+				fmt.Printf("  ! %s already exists in %s, skipping\n", skillName, ip.Label)
+				continue
+			}
+
+			fmt.Printf("Installing %s to %s...\n", skillName, ip.Label)
+
+			// Use progress callback if verbose
 		var installErr error
 		if verboseFlag {
 			installErr = repo.InstallSkillWithProgress(*targetSkill, targetPath, commit, func(src, dst string) {
@@ -138,9 +144,19 @@ func runSkillInstall(cmd *cobra.Command, args []string) error {
 		}
 
 		if installErr != nil {
-			return fmt.Errorf("installing to %s: %w", ip.Label, installErr)
+			errors = append(errors, fmt.Errorf("installing to %s: %w", ip.Label, installErr))
+			continue
 		}
 		fmt.Printf("  ✓ %s installed to %s\n", skillName, ip.Label)
+	}
+	}
+
+	if len(errors) > 0 {
+		fmt.Println("\nErrors encountered:")
+		for _, e := range errors {
+			fmt.Printf("  - %v\n", e)
+		}
+		return fmt.Errorf("%d skill(s) failed to install", len(errors))
 	}
 
 	return nil
