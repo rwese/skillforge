@@ -77,7 +77,81 @@ var rootCmd = &cobra.Command{
 	Short: "Manage agent skills from git repositories",
 	Long: `A focused CLI for managing agent skills from git repositories.
 
-Supports multiple agents via extensible target system with auto-detect config scope.`,
+Supports multiple agents via extensible target system with auto-detect config scope.
+
+═══════════════════════════════════════════════════════════════════════════════
+ QUICK START
+═══════════════════════════════════════════════════════════════════════════════
+
+  skillforge setup                        # Interactive setup wizard
+  skillforge repo add https://github.com/user/skills
+  skillforge skill install <name>          # Install a skill
+  skillforge sync                          # Sync all repos and update skills
+
+═══════════════════════════════════════════════════════════════════════════════
+ COMMANDS
+═══════════════════════════════════════════════════════════════════════════════
+
+  repo    Manage cached skill repositories (add, list, update, remove)
+  skill   Manage installed skills (install, list, search, update, remove)
+  sync    Sync repositories + update skills + sync across agents
+  target  Manage skill target directories for agents
+  setup   Interactive wizard to configure skill directories
+
+═══════════════════════════════════════════════════════════════════════════════
+ COMMON WORKFLOWS
+═══════════════════════════════════════════════════════════════════════════════
+
+  # Add a skill repository
+  skillforge repo add https://github.com/user/agent-skills
+
+  # Search for available skills
+  skillforge skill search git
+
+  # Install a skill to all agents
+  skillforge skill install my-git-fu
+
+  # Install a skill to a specific agent only
+  skillforge skill install my-git-fu --agent pi
+
+  # Update everything
+  skillforge sync --check    # Preview what would change
+  skillforge sync            # Apply updates
+
+  # Check installed skills
+  skillforge skill list
+  skillforge skill list --agent pi
+
+═══════════════════════════════════════════════════════════════════════════════
+ CONFIGURATION
+═══════════════════════════════════════════════════════════════════════════════
+
+  Config scopes (--scope flag):
+    global  ~/.config/skillforge/config.toml  (shared across system)
+    local   ./.skillforge.toml                (project-specific)
+    auto    Auto-detect local if in git repo  (default)
+
+  Global flags:
+    -s, --scope     Config scope (default: auto)
+    -n, --dry-run   Preview changes without applying
+    -y, --yes       Skip confirmations
+    -v, --verbose   Debug output
+
+═══════════════════════════════════════════════════════════════════════════════
+ EXAMPLES
+═══════════════════════════════════════════════════════════════════════════════
+
+  skillforge repo add https://github.com/rwese/skillforge --alias skillforge
+  skillforge repo list --format json
+  skillforge skill search "docker" --format json
+  skillforge skill install git-fu --agent pi
+  skillforge skill remove git-fu --agent pi
+  skillforge sync --agent pi --check
+  skillforge target list
+
+═══════════════════════════════════════════════════════════════════════════════
+
+Run "skillforge [command] --help" for more details on a specific command.`,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		// Configure viper
 		if cfgFile != "" {
