@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/rwese/skillforge-ng/internal/agents"
 	"github.com/rwese/skillforge-ng/internal/config"
@@ -453,12 +454,20 @@ func appendRemovePaths(paths []RemovePath, agentName string, agent agents.Agent,
 var skillSearchCmd = &cobra.Command{
 	Use:   "search [query]",
 	Short: "Search for skills",
-	Args:  cobra.ExactArgs(1),
-	RunE:  runSkillSearch,
+	Long:  `Search for skills by name or description.
+
+Supports multi-word queries. No flags required - just type your search terms.
+
+Examples:
+  skillforge skill search docker
+  skillforge skill search "docker container"
+  skillforge skill search postgres database`,
+	Args: cobra.MinimumNArgs(1),
+	RunE: runSkillSearch,
 }
 
 func runSkillSearch(cmd *cobra.Command, args []string) error {
-	query := args[0]
+	query := strings.Join(args, " ")
 
 	// Verbose output: show config loading details
 	verbose("Loading config with scope: %s", getScope())
