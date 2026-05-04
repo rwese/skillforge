@@ -17,7 +17,7 @@ import (
 var skillCmd = &cobra.Command{
 	Use:   "skill",
 	Short: "Manage installed skills",
-	Long:  `Manage skills installed to targets.
+	Long: `Manage skills installed to targets.
 
 Skills are copied from cached repositories to agent skill directories.`,
 }
@@ -34,20 +34,15 @@ func init() {
 var (
 	targetFlag string
 	agentFlag  string
-	scopeFlag  string // "global", "local", or "auto"
 )
 
 func init() {
 	skillInstallCmd.Flags().StringVarP(&agentFlag, "agent", "a", "", "Install to specific agent (pi, codex, claude)")
-	skillInstallCmd.Flags().StringVarP(&scopeFlag, "scope", "s", "auto", "Scope: global, local, or auto")
 	skillListCmd.Flags().StringVarP(&agentFlag, "agent", "a", "", "Filter by agent")
-	skillListCmd.Flags().StringVarP(&scopeFlag, "scope", "s", "auto", "Scope: global, local, or auto")
 	skillListCmd.Flags().StringVarP(&formatFlag, "format", "f", "text", "Output format: text, json")
 	skillRemoveCmd.Flags().StringVarP(&agentFlag, "agent", "a", "", "Remove from specific agent")
-	skillRemoveCmd.Flags().StringVarP(&scopeFlag, "scope", "s", "auto", "Scope: global, local, or auto")
 	skillUpdateCmd.Flags().BoolVarP(&checkFlag, "check", "c", false, "Check for updates without applying")
 	skillUpdateCmd.Flags().StringVarP(&agentFlag, "agent", "a", "", "Update skills for specific agent")
-	skillUpdateCmd.Flags().StringVarP(&scopeFlag, "scope", "s", "auto", "Scope: global, local, or auto")
 }
 
 var skillInstallCmd = &cobra.Command{
@@ -464,9 +459,33 @@ var skillSearchCmd = &cobra.Command{
 
 func runSkillSearch(cmd *cobra.Command, args []string) error {
 	query := args[0]
-	cfg, err := loadConfig()
+
+	// Verbose output: show config loading details
+	verbose("Loading config with scope: %s", getScope())
+
+	// Always load global config first to ensure global repos are always included
+	globalLoader := config.NewLoader(config.ScopeGlobal)
+	verbose("Global config path: %s", globalLoader.GlobalPath())
+	cfg, err := globalLoader.Load()
 	if err != nil {
 		return err
+	}
+
+	// If not using global-only mode, merge local repos (local takes precedence)
+	if scopeFlag != "global" {
+		localLoader := config.NewLoader(config.ScopeLocal)
+		localPath := config.DetectLocalPath()
+		if localPath != "" {
+			verbose("Local config path: %s", localPath)
+		} else {
+			verbose("No local config found")
+		}
+		localCfg, err := localLoader.Load()
+		if err == nil {
+			for k, v := range localCfg.Repos {
+				cfg.Repos[k] = v
+			}
+		}
 	}
 
 	cache := repo.NewCache(config.ExpandPath(cfg.Cache.Path))

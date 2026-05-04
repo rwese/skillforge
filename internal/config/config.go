@@ -46,6 +46,20 @@ const (
 	ScopeAuto
 )
 
+// String returns the string representation of a Scope.
+func (s Scope) String() string {
+	switch s {
+	case ScopeGlobal:
+		return "global"
+	case ScopeLocal:
+		return "local"
+	case ScopeAuto:
+		return "auto"
+	default:
+		return "unknown"
+	}
+}
+
 // Loader handles configuration loading with scope detection.
 type Loader struct {
 	scope      Scope
@@ -61,6 +75,11 @@ func NewLoader(scope Scope) *Loader {
 		scope:      scope,
 		globalPath: globalPath,
 	}
+}
+
+// GlobalPath returns the global config file path.
+func (l *Loader) GlobalPath() string {
+	return l.globalPath
 }
 
 // DetectLocalPath finds the local config path by searching from cwd to git root.

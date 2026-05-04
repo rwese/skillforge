@@ -12,7 +12,7 @@ import (
 var targetCmd = &cobra.Command{
 	Use:   "target",
 	Short: "Manage skill targets",
-	Long:  `Manage skill targets (agent skill directories).
+	Long: `Manage skill targets (agent skill directories).
 
 Targets define where skills are installed. Each target has a path and enabled status.`,
 }
@@ -250,28 +250,40 @@ func runTargetDisable(cmd *cobra.Command, args []string) error {
 }
 
 func loadConfig() (*config.Config, error) {
-	scope := config.ScopeAuto
-	if globalFlag {
-		scope = config.ScopeGlobal
-	} else if localFlag {
-		scope = config.ScopeLocal
-	}
+	scope := parseScope(scopeFlag)
 
 	loader := config.NewLoader(scope)
+
+	// Verbose output: show config loading details
+	verbose("Loading config with scope: %s", scope)
+	verbose("Global config path: %s", loader.GlobalPath())
+	if scope != config.ScopeGlobal {
+		localPath := config.DetectLocalPath()
+		if localPath != "" {
+			verbose("Local config path: %s", localPath)
+		} else {
+			verbose("No local config found")
+		}
+	}
+
 	return loader.Load()
 }
 
-func saveConfig(cfg *config.Config) error {
-	scope := config.ScopeAuto
-	local := false
-	if globalFlag {
-		scope = config.ScopeGlobal
-	} else if localFlag {
-		scope = config.ScopeLocal
-		local = true
-	} else if config.DetectLocalPath() != "" {
-		local = true
+// parseScope converts scope string to config.Scope.
+func parseScope(s string) config.Scope {
+	switch s {
+	case "global":
+		return config.ScopeGlobal
+	case "local":
+		return config.ScopeLocal
+	default:
+		return config.ScopeAuto
 	}
+}
+
+func saveConfig(cfg *config.Config) error {
+	scope := parseScope(scopeFlag)
+	local := scope == config.ScopeLocal || (scope == config.ScopeAuto && config.DetectLocalPath() != "")
 
 	loader := config.NewLoader(scope)
 	return loader.Save(cfg, local)

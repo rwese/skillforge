@@ -25,9 +25,9 @@ func TestFindMissingSkills(t *testing.T) {
 	}
 
 	tests := []struct {
-		name           string
+		name            string
 		installedSkills map[string]map[string]bool
-		wantMissing    map[string][]string
+		wantMissing     map[string][]string
 	}{
 		{
 			name: "all skills installed everywhere",
@@ -54,8 +54,8 @@ func TestFindMissingSkills(t *testing.T) {
 		{
 			name: "multiple agents missing different skills",
 			installedSkills: map[string]map[string]bool{
-				"pi/global":   {"skill-a": true},
-				"codex/local": {"skill-b": true},
+				"pi/global":     {"skill-a": true},
+				"codex/local":   {"skill-b": true},
 				"claude/global": {"skill-c": true},
 			},
 			wantMissing: map[string][]string{
@@ -74,9 +74,9 @@ func TestFindMissingSkills(t *testing.T) {
 			},
 		},
 		{
-			name:           "no agents configured",
+			name:            "no agents configured",
 			installedSkills: map[string]map[string]bool{},
-			wantMissing:    map[string][]string{},
+			wantMissing:     map[string][]string{},
 		},
 	}
 
@@ -129,7 +129,7 @@ func TestFindMissingSkills(t *testing.T) {
 // TestParseTarget tests target string parsing.
 func TestParseTarget(t *testing.T) {
 	tests := []struct {
-		target   string
+		target    string
 		wantAgent string
 		wantScope string
 	}{

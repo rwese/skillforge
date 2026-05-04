@@ -5,13 +5,13 @@ import (
 	"os"
 	"strings"
 
+	"github.com/rwese/skillforge-ng/internal/config"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
 
 var (
-	globalFlag  bool
-	localFlag   bool
+	scopeFlag   string
 	cfgFile     string
 	dryRunFlag  bool
 	yesFlag     bool
@@ -22,7 +22,7 @@ var (
 var rootCmd = &cobra.Command{
 	Use:   "skillforge",
 	Short: "Manage agent skills from git repositories",
-	Long:  `A focused CLI for managing agent skills from git repositories.
+	Long: `A focused CLI for managing agent skills from git repositories.
 
 Supports multiple agents via extensible target system with auto-detect config scope.`,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
@@ -44,8 +44,7 @@ func Execute() {
 func init() {
 	cobra.OnInitialize(initConfig)
 
-	rootCmd.PersistentFlags().BoolVarP(&globalFlag, "global", "g", false, "Use global config only")
-	rootCmd.PersistentFlags().BoolVarP(&localFlag, "local", "l", false, "Use local config only")
+	rootCmd.PersistentFlags().StringVarP(&scopeFlag, "scope", "s", "auto", "Config scope (global|local|auto)")
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "Config file path (default: ~/.config/skillforge/config.toml)")
 	rootCmd.PersistentFlags().BoolVarP(&dryRunFlag, "dry-run", "n", false, "Preview changes without applying")
 	rootCmd.PersistentFlags().BoolVarP(&yesFlag, "yes", "y", false, "Skip confirmations and use defaults")
@@ -53,21 +52,43 @@ func init() {
 
 	// Add shell completion command
 	rootCmd.AddCommand(completionCmd)
+
+	// Update scope help text with detected value
+	updateScopeHelp()
 }
 
 func initConfig() {
 	// Any additional initialization
 }
 
-// getScope determines the config scope based on flags.
+// getScope returns the effective scope based on --scope flag.
 func getScope() string {
-	if globalFlag {
-		return "global"
+	return scopeFlag
+}
+
+// detectScope determines the auto-detected scope (for help display).
+func detectScope() string {
+	if scopeFlag != "auto" {
+		return scopeFlag
 	}
-	if localFlag {
+	if config.DetectLocalPath() != "" {
 		return "local"
 	}
-	return "auto"
+	return "global"
+}
+
+// updateScopeHelp updates the --scope flag usage with detected value.
+func updateScopeHelp() {
+	flag := rootCmd.PersistentFlags().Lookup("scope")
+	if flag != nil {
+		detected := detectScope()
+		// Only show detected if it differs from the flag value
+		if detected != scopeFlag {
+			flag.Usage = fmt.Sprintf("Config scope (global|local|auto), detected: %s", detected)
+		} else {
+			flag.Usage = "Config scope (global|local|auto)"
+		}
+	}
 }
 
 // verbose prints debug output when verbose flag is set.

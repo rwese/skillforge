@@ -16,7 +16,7 @@ import (
 var repoCmd = &cobra.Command{
 	Use:   "repo",
 	Short: "Manage skill repositories",
-	Long:  `Manage cached skill repositories.
+	Long: `Manage cached skill repositories.
 
 Repositories are cloned to a local cache and kept up-to-date.`,
 }

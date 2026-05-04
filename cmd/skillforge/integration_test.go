@@ -38,25 +38,25 @@ func setupIntegrationTest(t *testing.T) *IntegrationTestEnv {
 
 	// Build the binary
 	binPath := filepath.Join(tmpDir, "skillforge")
-	
+
 	// Get current working directory
 	cwd, err := os.Getwd()
 	if err != nil {
 		t.Fatalf("Getwd() error = %v", err)
 	}
-	
+
 	// If we're in cmd/skillforge/, go up one level to project root
 	if filepath.Base(cwd) == "skillforge" && filepath.Base(filepath.Dir(cwd)) == "cmd" {
 		cwd = filepath.Dir(cwd) // now in cmd/
 		cwd = filepath.Dir(cwd) // now in project root
 	}
-	
+
 	cmd := exec.Command("go", "build", "-o", binPath, "./cmd/skillforge/")
 	cmd.Dir = cwd
-	
+
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
-	
+
 	if err := cmd.Run(); err != nil {
 		if stderr.Len() > 0 {
 			t.Skipf("Skipping integration test - could not build binary: %s", stderr.String())

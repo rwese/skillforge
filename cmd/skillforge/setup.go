@@ -12,7 +12,7 @@ import (
 var setupCmd = &cobra.Command{
 	Use:   "setup",
 	Short: "Setup skillforge for agents",
-	Long:  `Setup wizard to configure skill directories for known agents.
+	Long: `Setup wizard to configure skill directories for known agents.
 
 Detects common agents (pi, codex, claude) and helps configure their skill paths.`,
 }

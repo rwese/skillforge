@@ -7,15 +7,16 @@ import (
 
 // Hints provides contextual help for error messages.
 type Hint struct {
-	Title   string
-	Lines   []string
+	Title string
+	Lines []string
 }
 
 // FormatHint formats a hint for display.
 // Output:
-//   Hint:
-//     • Run: skillforge target add <name> <path> -e
-//     • Example: skillforge target add pi ~/.pi/agent/skills/ -e
+//
+//	Hint:
+//	  • Run: skillforge target add <name> <path> -e
+//	  • Example: skillforge target add pi ~/.pi/agent/skills/ -e
 func FormatHint(hint Hint) string {
 	if len(hint.Lines) == 0 {
 		return ""

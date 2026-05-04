@@ -113,8 +113,9 @@ enabled = true
 
 By default, skillforge auto-detects config scope:
 
-- Use `--local` or `--global` to force a specific scope
-- Local config in git repos takes precedence
+- Use `-s global`, `-s local`, or `-s auto` to control config scope
+- Local config in git repos takes precedence over global
+- Help text shows detected scope when not auto
 
 ## Output Formats
 
@@ -142,11 +143,10 @@ skillforge completion fish > ~/.config/fish/completions/skillforge.fish
 ## Global Flags
 
 ```bash
--n, --dry-run    # Preview changes without applying
--y, --yes       # Skip confirmations
--v, --verbose   # Enable debug output
--g, --global    # Use global config only
--l, --local     # Use local config only
+-n, --dry-run          # Preview changes without applying
+-y, --yes              # Skip confirmations
+-v, --verbose          # Enable debug output
+-s, --scope <scope>    # Config scope: global, local, or auto
 ```
 
 ## Troubleshooting
@@ -166,9 +166,9 @@ mkdir -p ~/.pi/agent/skills/
 
 ### Config not found
 
-Use `--local` or `--global` to specify config scope:
+Use `-s` to specify config scope:
 ```bash
-skillforge --local skill list
+skillforge -s local skill list
 ```
 
 ### Verbose debugging

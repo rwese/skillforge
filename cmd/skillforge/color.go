@@ -39,7 +39,7 @@ var (
 
 	// TableCell represents table cell content.
 	TableCell = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#ECF0F1"))
+			Foreground(lipgloss.Color("#ECF0F1"))
 )
 
 // Checkmark returns a styled checkmark string.
@@ -116,8 +116,8 @@ func isTerminal() bool {
 var (
 	// BoxStyle is a bordered box style.
 	BoxStyle = lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
-		Padding(1)
+			BorderStyle(lipgloss.RoundedBorder()).
+			Padding(1)
 
 	// SuccessBox is a green bordered box.
 	SuccessBox = lipgloss.NewStyle().
