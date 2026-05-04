@@ -54,14 +54,20 @@ var skillInstallCmd = &cobra.Command{
 }
 
 func runSkillInstall(cmd *cobra.Command, args []string) error {
-	cfg, err := loadConfig()
-	if err != nil {
+	// Load scoped config for installation paths (ignored but validates scope is valid)
+	if _, err := loadConfig(); err != nil {
 		return err
 	}
 
-	cache := repo.NewCache(config.ExpandPath(cfg.Cache.Path))
+	// Always load all repos (global + local) for skill discovery since cache is global
+	allRepos, allCache, err := config.NewLoader(config.ScopeAuto).LoadAllRepos()
+	if err != nil {
+		return fmt.Errorf("loading repos: %w", err)
+	}
 
-	// Determine paths to install to
+	cache := repo.NewCache(config.ExpandPath(allCache.Path))
+
+	// Determine paths to install to (uses scoped config)
 	installPaths, err := getInstallPaths(agentFlag, scopeFlag)
 	if err != nil {
 		return err
@@ -77,11 +83,11 @@ func runSkillInstall(cmd *cobra.Command, args []string) error {
 	for _, skillName := range args {
 		fmt.Printf("\n=== Installing %s ===\n", skillName)
 
-		// Find the skill across all repos
+		// Find the skill across all repos (use merged repos, not scoped)
 		var targetSkill *grimoire.Skill
 		var commit string
 
-		for repoName, info := range cfg.Repos {
+		for repoName, info := range allRepos {
 			if !cache.Exists(repoName) {
 				continue
 			}

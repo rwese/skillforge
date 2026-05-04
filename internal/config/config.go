@@ -179,6 +179,36 @@ func (l *Loader) loadFile(path string, cfg *Config) error {
 	return nil
 }
 
+// LoadAllRepos loads repos from both global and local configs.
+// This is needed for skill discovery since repos are cached globally.
+func (l *Loader) LoadAllRepos() (map[string]RepoInfo, CacheConfig, error) {
+	repos := make(map[string]RepoInfo)
+	cache := CacheConfig{
+		Path: filepath.Join(os.Getenv("HOME"), ".cache", "skillforge", "repos"),
+	}
+
+	// Load global repos first
+	if err := l.loadFile(l.globalPath, &Config{
+		Repos:   repos,
+		Targets: make(map[string]Target),
+		Cache:   cache,
+	}); err != nil {
+		return nil, cache, err
+	}
+
+	// Override with local repos (local takes precedence for duplicates)
+	localPath := DetectLocalPath()
+	if localPath != "" {
+		_ = l.loadFile(localPath, &Config{
+			Repos:   repos,
+			Targets: make(map[string]Target),
+			Cache:   cache,
+		})
+	}
+
+	return repos, cache, nil
+}
+
 // Save writes the configuration to a file.
 func (l *Loader) Save(cfg *Config, local bool) error {
 	var path string

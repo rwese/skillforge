@@ -782,3 +782,80 @@ branch = "main"
 		t.Error("Local repo 'local-repo' was removed after global save")
 	}
 }
+
+func TestLoadAllRepos(t *testing.T) {
+	// Create temp directories
+	tmpDir, err := os.MkdirTemp("", "skillforge-test-*")
+	if err != nil {
+		t.Fatalf("MkdirTemp() error = %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	globalPath := filepath.Join(tmpDir, "global.toml")
+	localDir := filepath.Join(tmpDir, "project")
+	localPath := filepath.Join(localDir, ".skillforge", "config.toml")
+
+	// Write global config with repos
+	globalCfg := `
+[repos.global-repo]
+url = "https://github.com/global/repo"
+branch = "main"
+`
+	if err := os.WriteFile(globalPath, []byte(globalCfg), 0644); err != nil {
+		t.Fatalf("WriteFile(global) error = %v", err)
+	}
+
+	// Write local config with different repos
+	if err := os.MkdirAll(filepath.Dir(localPath), 0755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	localCfg := `
+[repos.local-repo]
+url = "https://github.com/local/repo"
+branch = "develop"
+`
+	if err := os.WriteFile(localPath, []byte(localCfg), 0644); err != nil {
+		t.Fatalf("WriteFile(local) error = %v", err)
+	}
+
+	// Change to tmpDir
+	oldCwd, _ := os.Getwd()
+	defer os.Chdir(oldCwd)
+	os.Chdir(localDir)
+
+	loader := &Loader{
+		scope:      ScopeLocal, // Should still load both
+		globalPath: globalPath,
+	}
+
+	repos, _, err := loader.LoadAllRepos()
+	if err != nil {
+		t.Fatalf("LoadAllRepos() error = %v", err)
+	}
+
+	// Should have both repos
+	if _, ok := repos["global-repo"]; !ok {
+		t.Error("LoadAllRepos() missing global-repo")
+	}
+	if _, ok := repos["local-repo"]; !ok {
+		t.Error("LoadAllRepos() missing local-repo")
+	}
+
+	// Local should override global if same name
+	localOverrideCfg := `
+[repos.global-repo]
+url = "https://github.com/local/override"
+`
+	if err := os.WriteFile(localPath, []byte(localOverrideCfg), 0644); err != nil {
+		t.Fatalf("WriteFile(local override) error = %v", err)
+	}
+
+	repos2, _, err := loader.LoadAllRepos()
+	if err != nil {
+		t.Fatalf("LoadAllRepos() error = %v", err)
+	}
+
+	if repos2["global-repo"].URL != "https://github.com/local/override" {
+		t.Errorf("LoadAllRepos() local override not applied, got %s", repos2["global-repo"].URL)
+	}
+}
