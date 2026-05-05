@@ -59,7 +59,7 @@ func runSetupDetect(cmd *cobra.Command, args []string) error {
 	if len(selectableAgents) == 0 {
 		fmt.Println("No known agents configured.")
 		fmt.Println("\nYou can add agents manually with:")
-		fmt.Println("  skillforge setup add <name>")
+		fmt.Printf("  %s setup add <name>\n", cmdName())
 		return nil
 	}
 
@@ -162,8 +162,8 @@ func runSetupList(cmd *cobra.Command, args []string) error {
 
 	if len(cfg.Agents) == 0 {
 		fmt.Println("No agents configured.")
-		fmt.Println("\nRun 'skillforge setup detect' to auto-detect known agents.")
-		fmt.Println("Or 'skillforge setup add <name>' to add an agent manually.")
+		fmt.Printf("\nRun '%s setup detect' to auto-detect known agents.\n", cmdName())
+		fmt.Printf("Or '%s setup add <name>' to add an agent manually.\n", cmdName())
 		return nil
 	}
 

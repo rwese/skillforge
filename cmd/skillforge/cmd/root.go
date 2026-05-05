@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"text/template"
 
@@ -71,11 +72,9 @@ var (
 	verboseFlag bool
 )
 
-// rootCmd represents the base command.
-var rootCmd = &cobra.Command{
-	Use:   "skillforge",
-	Short: "Manage agent skills from git repositories",
-	Long: `A focused CLI for managing agent skills from git repositories.
+// rootLong returns the root command's long description with $0 replaced.
+func rootLong() string {
+	template := `A focused CLI for managing agent skills from git repositories.
 
 Supports multiple agents via extensible target system with auto-detect config scope.
 
@@ -83,10 +82,10 @@ Supports multiple agents via extensible target system with auto-detect config sc
  QUICK START
 ═══════════════════════════════════════════════════════════════════════════════
 
-  skillforge setup                        # Interactive setup wizard
-  skillforge repo add https://github.com/user/skills
-  skillforge skill install <name>          # Install a skill
-  skillforge sync                          # Sync all repos and update skills
+  $0 setup                        # Interactive setup wizard
+  $0 repo add https://github.com/user/skills
+  $0 skill install <name>          # Install a skill
+  $0 sync                          # Sync all repos and update skills
 
 ═══════════════════════════════════════════════════════════════════════════════
  COMMANDS
@@ -103,24 +102,24 @@ Supports multiple agents via extensible target system with auto-detect config sc
 ═══════════════════════════════════════════════════════════════════════════════
 
   # Add a skill repository
-  skillforge repo add https://github.com/user/agent-skills
+  $0 repo add https://github.com/user/agent-skills
 
   # Search for available skills
-  skillforge skill search git
+  $0 skill search git
 
   # Install a skill to all agents
-  skillforge skill install my-git-fu
+  $0 skill install my-git-fu
 
   # Install a skill to a specific agent only
-  skillforge skill install my-git-fu --agent pi
+  $0 skill install my-git-fu --agent pi
 
   # Update everything
-  skillforge sync --check    # Preview what would change
-  skillforge sync            # Apply updates
+  $0 sync --check    # Preview what would change
+  $0 sync            # Apply updates
 
   # Check installed skills
-  skillforge skill list
-  skillforge skill list --agent pi
+  $0 skill list
+  $0 skill list --agent pi
 
 ═══════════════════════════════════════════════════════════════════════════════
  CONFIGURATION
@@ -141,17 +140,25 @@ Supports multiple agents via extensible target system with auto-detect config sc
  EXAMPLES
 ═══════════════════════════════════════════════════════════════════════════════
 
-  skillforge repo add https://github.com/rwese/skillforge --alias skillforge
-  skillforge repo list --format json
-  skillforge skill search "docker" --format json
-  skillforge skill install git-fu --agent pi
-  skillforge skill remove git-fu --agent pi
-  skillforge sync --agent pi --check
-  skillforge target list
+  $0 repo add https://github.com/rwese/skillforge --alias skillforge
+  $0 repo list --format json
+  $0 skill search "docker" --format json
+  $0 skill install git-fu --agent pi
+  $0 skill remove git-fu --agent pi
+  $0 sync --agent pi --check
+  $0 target list
 
 ═══════════════════════════════════════════════════════════════════════════════
 
-Run "skillforge [command] --help" for more details on a specific command.`,
+Run "$0 [command] --help" for more details on a specific command.`
+	return strings.ReplaceAll(template, "$0", cmdName())
+}
+
+// rootCmd represents the base command.
+var rootCmd = &cobra.Command{
+	Use:   "skillforge",
+	Short: "Manage agent skills from git repositories",
+	Long:  rootLong(),
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		// Configure viper
 		if cfgFile != "" {
@@ -162,6 +169,11 @@ Run "skillforge [command] --help" for more details on a specific command.`,
 
 // Execute runs the root command.
 func Execute() {
+	// Set the executable name based on os.Args[0] (actual binary name)
+	// Strip path to get just the binary name
+	binaryName := filepath.Base(os.Args[0])
+	SetExecName(binaryName)
+
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -170,6 +182,17 @@ func Execute() {
 
 func init() {
 	cobra.OnInitialize(initConfig)
+
+	// Set help handler for completion command to refresh $0
+	completionCmd.SetHelpFunc(func(cmd *cobra.Command, args []string) {
+		cmd.Long = completionLong()
+		// Render the command's own help
+		fmt.Fprintln(os.Stdout, cmd.Long)
+		if cmd.HasAvailableFlags() {
+			fmt.Fprintln(os.Stdout, "\nFlags:")
+			cmd.Flags().PrintDefaults()
+		}
+	})
 
 	// Create custom template with functions
 	funcMap := template.FuncMap{
@@ -188,6 +211,9 @@ func init() {
 	}
 	rootCmd.SetHelpTemplate(helpTemplate)
 	rootCmd.SetHelpFunc(func(cmd *cobra.Command, args []string) {
+		// Refresh the Long description with current command name
+		rootCmd.Long = rootLong()
+
 		buf := &bytes.Buffer{}
 		if err := tmpl.Execute(buf, cmd); err != nil {
 			cmd.Help()

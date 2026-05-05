@@ -1,8 +1,8 @@
 package cmd
 
 import (
-	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -10,51 +10,14 @@ import (
 var completionCmd = &cobra.Command{
 	Use:   "completion [bash|zsh|fish|powershell]",
 	Short: "Generate shell completion scripts",
-	Long: fmt.Sprintf(`Generate shell completion scripts for skillforge.
-
-To load completions:
-
-Bash:
-
-  $ source <(skillforge completion bash)
-
-  # To load completions for each session, execute once:
-  # Linux:
-  $ skillforge completion bash > /etc/bash_completion.d/skillforge
-  # macOS:
-  $ skillforge completion bash > /usr/local/etc/bash_completion.d/skillforge
-
-Zsh:
-
-  # If shell completion is not already enabled in your environment,
-  # you will need to enable it.  You can execute the following once:
-
-  $ echo \"autoload -U compinit; compinit\" >> ~/.zshrc
-
-  # To load completions for each session, execute once:
-  $ skillforge completion zsh > \"${fpath[1]}/_skillforge\"
-
-  # You will need to start a new shell for this setup to take effect.
-
-Fish:
-
-  $ skillforge completion fish | source
-
-  # To load completions for each session, execute once:
-  $ skillforge completion fish > ~/.config/fish/completions/skillforge.fish
-
-PowerShell:
-
-  $ skillforge completion powershell | Out-String | Invoke-Expression
-
-  # To load completions for each session, execute once:
-  $ skillforge completion powershell > skillforge.ps1
-  # and source this file from your PowerShell profile.
-`),
+	Long:  "", // Set dynamically
 	DisableFlagsInUseLine: true,
 	ValidArgs:             []string{"bash", "zsh", "fish", "powershell"},
 	Args:                  cobra.ExactValidArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		// Refresh Long with current command name
+		cmd.Long = completionLong()
+
 		switch args[0] {
 		case "bash":
 			return rootCmd.GenBashCompletion(os.Stdout)
@@ -67,4 +30,49 @@ PowerShell:
 		}
 		return nil
 	},
+}
+
+func completionLong() string {
+	template := `Generate shell completion scripts.
+
+To load completions:
+
+Bash:
+
+  $ source <($0 completion bash)
+
+  # To load completions for each session, execute once:
+  # Linux:
+  $ $0 completion bash > /etc/bash_completion.d/$0
+  # macOS:
+  $ $0 completion bash > /usr/local/etc/bash_completion.d/$0
+
+Zsh:
+
+  # If shell completion is not already enabled in your environment,
+  # you will need to enable it.  You can execute the following once:
+
+  $ echo "autoload -U compinit; compinit" >> ~/.zshrc
+
+  # To load completions for each session, execute once:
+  $ $0 completion zsh > "${fpath[1]}/_$0"
+
+  # You will need to start a new shell for this setup to take effect.
+
+Fish:
+
+  $ $0 completion fish | source
+
+  # To load completions for each session, execute once:
+  $ $0 completion fish > ~/.config/fish/completions/$0.fish
+
+PowerShell:
+
+  $ $0 completion powershell | Out-String | Invoke-Expression
+
+  # To load completions for each session, execute once:
+  $ $0 completion powershell > $0.ps1
+  # and source this file from your PowerShell profile.
+`
+	return strings.ReplaceAll(template, "$0", cmdName())
 }

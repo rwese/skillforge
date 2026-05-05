@@ -3,7 +3,22 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"strings"
 )
+
+// execName is the executable name, updated after cobra parses args.
+// Defaults to "skillforge" but will be set to the actual command name.
+var execName = "skillforge"
+
+// SetExecName sets the executable name (called from root.go init).
+func SetExecName(name string) {
+	execName = name
+}
+
+// cmdName returns the command name for hints, handling potential path prefixes.
+func cmdName() string {
+	return execName
+}
 
 // Hints provides contextual help for error messages.
 type Hint struct {
@@ -15,8 +30,8 @@ type Hint struct {
 // Output:
 //
 //	Hint:
-//	  • Run: skillforge target add <name> <path> -e
-//	  • Example: skillforge target add pi ~/.pi/agent/skills/ -e
+//	  • Run: $0 target add <name> <path> -e
+//	  • Example: $0 target add pi ~/.pi/agent/skills/ -e
 func FormatHint(hint Hint) string {
 	if len(hint.Lines) == 0 {
 		return ""
@@ -30,6 +45,8 @@ func FormatHint(hint Hint) string {
 	}
 
 	for _, line := range hint.Lines {
+		// Replace $0 with actual command name
+		line = strings.ReplaceAll(line, "$0", cmdName())
 		result += fmt.Sprintf("  • %s\n", line)
 	}
 
@@ -46,39 +63,39 @@ var (
 	HintNoTargets = Hint{
 		Title: "no targets configured",
 		Lines: []string{
-			"Run: skillforge target add <name> <path> -e",
-			"Example: skillforge target add pi ~/.pi/agent/skills/ -e",
+			"Run: $0 target add <name> <path> -e",
+			"Example: $0 target add pi ~/.pi/agent/skills/ -e",
 		},
 	}
 
 	HintNoRepos = Hint{
 		Title: "no repositories configured",
 		Lines: []string{
-			"Run: skillforge repo add <name> <url>",
-			"Example: skillforge repo add grimoire https://github.com/rwese/agents-grimoire.git",
+			"Run: $0 repo add <name> <url>",
+			"Example: $0 repo add grimoire https://github.com/rwese/agents-grimoire.git",
 		},
 	}
 
 	HintRepoNotCached = Hint{
 		Title: "repository not cached",
 		Lines: []string{
-			"Run: skillforge repo update",
-			"Example: skillforge repo update grimoire",
+			"Run: $0 repo update",
+			"Example: $0 repo update grimoire",
 		},
 	}
 
 	HintSkillNotFound = Hint{
 		Title: "skill not found",
 		Lines: []string{
-			"Run: skillforge repo update to refresh skills",
-			"Run: skillforge skill search <query> to search",
+			"Run: $0 repo update to refresh skills",
+			"Run: $0 skill search <query> to search",
 		},
 	}
 
 	HintSearchNoResults = Hint{
 		Title: "no search results",
 		Lines: []string{
-			"Run: skillforge repo update to refresh skills",
+			"Run: $0 repo update to refresh skills",
 			"Try a different search term",
 		},
 	}
@@ -86,40 +103,40 @@ var (
 	HintTargetExists = Hint{
 		Title: "target already exists",
 		Lines: []string{
-			"Use a different name: skillforge target add <newname> <path> -e",
-			"View targets: skillforge target list",
+			"Use a different name: $0 target add <newname> <path> -e",
+			"View targets: $0 target list",
 		},
 	}
 
 	HintTargetNotFound = Hint{
 		Title: "target not found",
 		Lines: []string{
-			"View targets: skillforge target list",
-			"Add new target: skillforge target add <name> <path> -e",
+			"View targets: $0 target list",
+			"Add new target: $0 target add <name> <path> -e",
 		},
 	}
 
 	HintRepoExists = Hint{
 		Title: "repository already exists",
 		Lines: []string{
-			"Run: skillforge repo update to refresh",
-			"View repos: skillforge repo list",
+			"Run: $0 repo update to refresh",
+			"View repos: $0 repo list",
 		},
 	}
 
 	HintRepoNotFound = Hint{
 		Title: "repository not found",
 		Lines: []string{
-			"View repos: skillforge repo list",
-			"Add new repo: skillforge repo add <name> <url>",
+			"View repos: $0 repo list",
+			"Add new repo: $0 repo add <name> <url>",
 		},
 	}
 
 	HintSkillNotInstalled = Hint{
 		Title: "skill not installed",
 		Lines: []string{
-			"View installed: skillforge skill list",
-			"Install skill: skillforge skill install <name>",
+			"View installed: $0 skill list",
+			"Install skill: $0 skill install <name>",
 		},
 	}
 )
