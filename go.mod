@@ -1,4 +1,4 @@
-module github.com/rwese/skillforge-ng
+module github.com/rwese/skillforge
 
 go 1.25.0
 

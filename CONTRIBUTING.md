@@ -1,4 +1,4 @@
-# Contributing to skillforge-ng
+# Contributing to skillforge
 
 Thank you for your interest in contributing!
 
@@ -6,8 +6,8 @@ Thank you for your interest in contributing!
 
 ```bash
 # Clone the repository
-git clone https://github.com/rwese/skillforge-ng
-cd skillforge-ng
+git clone https://github.com/rwese/skillforge
+cd skillforge
 
 # Install dependencies
 go mod download
@@ -58,7 +58,7 @@ test: add config loading tests
 ## Project Structure
 
 ```
-skillforge-ng/
+skillforge/
 ├── cmd/skillforge/     # CLI commands (cobra)
 ├── internal/
 │   ├── config/        # Configuration loading

@@ -6,11 +6,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/rwese/skillforge-ng/internal/agents"
-	"github.com/rwese/skillforge-ng/internal/config"
-	"github.com/rwese/skillforge-ng/internal/repo"
-	"github.com/rwese/skillforge-ng/internal/search"
-	"github.com/rwese/skillforge-ng/pkg/grimoire"
+	"github.com/rwese/skillforge/internal/agents"
+	"github.com/rwese/skillforge/internal/config"
+	"github.com/rwese/skillforge/internal/repo"
+	"github.com/rwese/skillforge/internal/search"
+	"github.com/rwese/skillforge/pkg/grimoire"
 	"github.com/spf13/cobra"
 )
 

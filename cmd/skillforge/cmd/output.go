@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/rwese/skillforge-ng/internal/config"
+	"github.com/rwese/skillforge/internal/config"
 )
 
 // OutputFormat represents the output format type.

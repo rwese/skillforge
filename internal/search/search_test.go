@@ -3,7 +3,7 @@ package search
 import (
 	"testing"
 
-	"github.com/rwese/skillforge-ng/pkg/grimoire"
+	"github.com/rwese/skillforge/pkg/grimoire"
 )
 
 func TestMatchScore(t *testing.T) {

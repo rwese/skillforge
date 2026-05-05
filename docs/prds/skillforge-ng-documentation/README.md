@@ -1,4 +1,4 @@
-# PRD: skillforge-ng Documentation Refresh
+# PRD: skillforge Documentation Refresh
 
 **Version:** 1.0-draft
 **Date:** 2026-04-28
@@ -9,7 +9,7 @@
 
 ## 1. Executive Summary
 
-Improve documentation for skillforge-ng to help new users get started quickly and help contributors understand the codebase.
+Improve documentation for skillforge to help new users get started quickly and help contributors understand the codebase.
 
 **Goal:** Comprehensive but not overwhelming. "Docs that a junior dev can understand."
 
@@ -45,7 +45,7 @@ Existing README has:
 ### 3.2 Proposed Structure
 
 ```markdown
-# skillforge-ng
+# skillforge
 
 > A focused CLI for managing agent skills from git repositories.
 
@@ -157,7 +157,7 @@ Guide new contributors through:
 ### 4.2 Proposed Structure
 
 ```markdown
-# Contributing to skillforge-ng
+# Contributing to skillforge
 
 Thanks for your interest!
 
@@ -170,8 +170,8 @@ Thanks for your interest!
 ### Clone and Build
 
 ```bash
-git clone https://github.com/rwese/skillforge-ng
-cd skillforge-ng
+git clone https://github.com/rwese/skillforge
+cd skillforge
 go build -o skillforge ./cmd/skillforge/
 ```
 
@@ -191,7 +191,7 @@ go test ./... -v
 ## Project Structure
 
 ```
-skillforge-ng/
+skillforge/
 ├── cmd/skillforge/     # CLI commands (cobra)
 ├── internal/           # Internal packages
 │   ├── config/        # Configuration
@@ -276,7 +276,7 @@ Include upgrade notes when relevant:
 Current TODO.md tracks Phase 1-3. After v1.1:
 
 ```markdown
-# skillforge-ng TODO
+# skillforge TODO
 
 ## v1.1 (Current)
 - [x] Bug fixes (clone, ensureTargetDir, scopeLocal)
@@ -284,7 +284,7 @@ Current TODO.md tracks Phase 1-3. After v1.1:
 - [x] UX polish (flags, confirmations, errors)
 
 ## v2 Future
-See `docs/prds/skillforge-ng-v2/README.md`
+See `docs/prds/skillforge-v2/README.md`
 
 - [ ] Interactive TUI
 - [ ] Suggest command

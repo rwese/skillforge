@@ -8,7 +8,7 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/rwese/skillforge-ng/internal/config"
+	"github.com/rwese/skillforge/internal/config"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )

@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/rwese/skillforge-ng/cmd/skillforge/cmd"
+	"github.com/rwese/skillforge/cmd/skillforge/cmd"
 )
 
 func main() {

@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-REPO="rwese/skillforge-ng"
+REPO="rwese/skillforge"
 BINARY="skillforge"
 
 # Determine OS and architecture

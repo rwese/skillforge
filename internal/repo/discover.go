@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/rwese/skillforge-ng/pkg/grimoire"
+	"github.com/rwese/skillforge/pkg/grimoire"
 )
 
 // Discover finds all skills in a cached repository.

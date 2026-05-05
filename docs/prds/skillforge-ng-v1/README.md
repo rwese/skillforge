@@ -1,6 +1,6 @@
 # PRD: SkillForge-NG
 
-## Project Name: skillforge-ng
+## Project Name: skillforge
 
 **Version:** 1.0.0-draft **Date:** 2026-04-27 **Status:** Planning **Target:** MVP CLI
 
@@ -68,7 +68,7 @@ Trim to core essence: a focused CLI for managing agent skills from git repositor
 ### Project Structure
 
 ```
-skillforge-ng/
+skillforge/
 ├── cmd/
 │   └── skillforge/
 │       ├── main.go           # Entry point
@@ -95,7 +95,7 @@ skillforge-ng/
 │       └── types.go         # Grimoire struct
 └── docs/
     └── prds/
-        └── skillforge-ng-v1/
+        └── skillforge-v1/
             └── README.md
 ```
 
@@ -337,7 +337,7 @@ Search results for "git":
 ## 8. Repository Location
 
 ```
-/Users/wese/Repos/github.com/rwese/skillforge-ng/
+/Users/wese/Repos/github.com/rwese/skillforge/
 ```
 
 ---

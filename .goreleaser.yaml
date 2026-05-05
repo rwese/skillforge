@@ -42,5 +42,5 @@ changelog:
 release:
   github:
     owner: rwese
-    name: skillforge-ng
+    name: skillforge
   draft: false

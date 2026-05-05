@@ -1,4 +1,4 @@
-# skillforge-ng Agent Instructions
+# skillforge Agent Instructions
 
 CLI tool for managing agent skills from git repositories.
 
@@ -13,7 +13,7 @@ go mod tidy                                # Update dependencies
 ## Structure
 
 ```
-skillforge-ng/
+skillforge/
 ├── cmd/skillforge/     # CLI commands (cobra)
 ├── internal/
 │   ├── config/        # Config loading + scope detection

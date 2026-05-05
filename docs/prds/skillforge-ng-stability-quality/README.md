@@ -1,4 +1,4 @@
-# PRD: skillforge-ng v1.1 - Stability & Quality
+# PRD: skillforge v1.1 - Stability & Quality
 
 **Version:** 1.1.0-draft
 **Date:** 2026-04-28
@@ -9,7 +9,7 @@
 
 ## 1. Executive Summary
 
-This PRD covers three related improvements to skillforge-ng:
+This PRD covers three related improvements to skillforge:
 
 1. **Bug Fixes (v1.0.1)** - Critical issues identified in code review
 2. **Testing (v1.0.2)** - Unit and integration test coverage

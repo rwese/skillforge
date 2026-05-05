@@ -1,8 +1,8 @@
-# PRD: skillforge-ng Usability Improvements
+# PRD: skillforge Usability Improvements
 
-## Project Name: skillforge-ng
+## Project Name: skillforge
 
-**Version:** 1.0.0 **Date:** 2026-04-28 **Status:** Approved **Target:** skillforge-ng v0.2.0
+**Version:** 1.0.0 **Date:** 2026-04-28 **Status:** Approved **Target:** skillforge v0.2.0
 
 ---
 
@@ -10,7 +10,7 @@
 
 **Problem Statement**
 
-After a junior developer review session, several usability and correctness issues were identified in skillforge-ng:
+After a junior developer review session, several usability and correctness issues were identified in skillforge:
 
 1. **Scope auto-detection bug**: `target list` without flags doesn't show targets when global config exists but local config doesn't
 2. **Poor onboarding**: New users get cryptic errors like "no enabled targets found" without guidance
@@ -20,7 +20,7 @@ After a junior developer review session, several usability and correctness issue
 
 | Project | Purpose | Tech | Status |
 |---------|---------|------|--------|
-| skillforge-ng | Main CLI tool | Go, Cobra | Active |
+| skillforge | Main CLI tool | Go, Cobra | Active |
 
 **Proposed Solution**
 
@@ -72,7 +72,7 @@ Implement targeted usability fixes based on review feedback:
 **Project Structure**
 
 ```
-skillforge-ng/
+skillforge/
 ├── cmd/skillforge/
 │   ├── main.go
 │   ├── root.go           # Flags, config loading
@@ -318,7 +318,7 @@ All list outputs are sorted alphabetically by name.
 ### 9. Repository Location
 
 ```bash
-/Users/wese/Repos/github.com/rwese/skillforge-ng/
+/Users/wese/Repos/github.com/rwese/skillforge/
 ```
 
 ---

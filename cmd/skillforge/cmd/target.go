@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/rwese/skillforge-ng/internal/config"
+	"github.com/rwese/skillforge/internal/config"
 	"github.com/spf13/cobra"
 )
 

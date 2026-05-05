@@ -1,4 +1,4 @@
-# Improvement Plan: skillforge-ng
+# Improvement Plan: skillforge
 
 **Date:** 2026-04-28
 **Status:** Planning
@@ -8,7 +8,7 @@
 
 ## Overview
 
-Based on the [code review](./reviews/2026-04-28-code-review.md), this plan addresses critical bugs, missing tests, and UX improvements for skillforge-ng.
+Based on the [code review](./reviews/2026-04-28-code-review.md), this plan addresses critical bugs, missing tests, and UX improvements for skillforge.
 
 ---
 
@@ -195,7 +195,7 @@ $ skillforge target list
 
 ## Backlog (v2)
 
-Per [v2 PRD](../prds/skillforge-ng-v2/README.md):
+Per [v2 PRD](../prds/skillforge-v2/README.md):
 
 | Feature | Priority | Dependencies |
 |---------|----------|--------------|

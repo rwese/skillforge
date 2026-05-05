@@ -3,7 +3,7 @@ package cmd
 import (
 	"testing"
 
-	"github.com/rwese/skillforge-ng/internal/agents"
+	"github.com/rwese/skillforge/internal/agents"
 )
 
 // TestCollectSkillNames tests skill name collection from directories.

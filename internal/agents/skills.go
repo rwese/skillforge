@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 
 	"github.com/BurntSushi/toml"
-	"github.com/rwese/skillforge-ng/pkg/grimoire"
+	"github.com/rwese/skillforge/pkg/grimoire"
 )
 
 // ResolvedSkill represents a skill with its resolved paths.

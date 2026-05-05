@@ -1,4 +1,4 @@
-# Code Review: skillforge-ng
+# Code Review: skillforge
 
 **Date:** 2026-04-28
 **Reviewer:** Exploration Session
@@ -8,7 +8,7 @@
 
 ## Summary
 
-skillforge-ng is a focused CLI for managing AI agent skills from git repositories. The v1 MVP is **feature-complete** per the PRD, implementing:
+skillforge is a focused CLI for managing AI agent skills from git repositories. The v1 MVP is **feature-complete** per the PRD, implementing:
 - Repository caching with git operations
 - Skill installation with grimoire metadata
 - Target management for multiple agents
@@ -122,11 +122,11 @@ If user specifies `--local` but no config exists, they get silent empty config i
 
 ```
 $ go test ./... -cover
-?       github.com/rwese/skillforge-ng/cmd/skillforge     [no test files]
-?       github.com/rwese/skillforge-ng/internal/config   [no test files]
-?       github.com/rwese/skillforge-ng/internal/repo      [no test files]
-?       github.com/rwese/skillforge-ng/internal/search     [no test files]
-?       github.com/rwese/skillforge-ng/pkg/grimoire        [no test files]
+?       github.com/rwese/skillforge/cmd/skillforge     [no test files]
+?       github.com/rwese/skillforge/internal/config   [no test files]
+?       github.com/rwese/skillforge/internal/repo      [no test files]
+?       github.com/rwese/skillforge/internal/search     [no test files]
+?       github.com/rwese/skillforge/pkg/grimoire        [no test files]
 ```
 
 **Coverage:** 0% - No test files exist.
@@ -159,7 +159,7 @@ $ go test ./... -cover
 
 ### Long Term (v2)
 
-Per `docs/prds/skillforge-ng-v2/README.md`:
+Per `docs/prds/skillforge-v2/README.md`:
 - TUI for visual management
 - `suggest` command for project analysis
 - Dirty state detection with tree hashes

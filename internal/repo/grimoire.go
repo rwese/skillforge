@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
-	"github.com/rwese/skillforge-ng/pkg/grimoire"
+	"github.com/rwese/skillforge/pkg/grimoire"
 )
 
 // ProgressCallback is called during file copy operations.

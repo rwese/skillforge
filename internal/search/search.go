@@ -3,7 +3,7 @@ package search
 import (
 	"strings"
 
-	"github.com/rwese/skillforge-ng/pkg/grimoire"
+	"github.com/rwese/skillforge/pkg/grimoire"
 )
 
 // SimpleKeywordSearch performs a simple keyword match search.
