@@ -316,6 +316,11 @@ func skillCachePath(skill grimoire.Skill) string {
 }
 
 // skillTargetPath returns the target installation path for a skill.
-func skillTargetPath(target config.Target, skillName string) string {
-	return filepath.Join(config.ExpandPath(target.Path), skillName)
+// scope determines whether to use GlobalPath or LocalPath.
+func skillTargetPath(target config.Target, skillName string, scope string) string {
+	path := target.GlobalPath
+	if scope == "local" {
+		path = target.LocalPath
+	}
+	return filepath.Join(config.ExpandPath(path), skillName)
 }

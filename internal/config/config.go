@@ -22,28 +22,14 @@ type CacheConfig struct {
 	Path string `toml:"path"`
 }
 
-// TargetScope defines where a target is valid.
-type TargetScope int
-
-const (
-	TargetScopeLocal TargetScope = iota
-	TargetScopeGlobal
-)
-
-// String returns the string representation of a TargetScope.
-func (s TargetScope) String() string {
-	if s == TargetScopeLocal {
-		return "local"
-	}
-	return "global"
-}
-
 // Target defines an agent skill directory target.
+// GlobalPath is used when installing with -s global (global agent).
+// LocalPath is used when installing with -s local (local/project agent).
 type Target struct {
-	Name    string      `toml:"name"`
-	Path    string      `toml:"path"`
-	Enabled bool        `toml:"enabled"`
-	Scope   TargetScope `toml:"scope"` // TargetScopeLocal or TargetScopeGlobal
+	Name       string `toml:"name"`
+	GlobalPath string `toml:"globalPath"`
+	LocalPath  string `toml:"localPath"`
+	Enabled    bool   `toml:"enabled"`
 }
 
 // RepoInfo tracks a cached repository.
@@ -230,21 +216,22 @@ func (l *Loader) Save(cfg *Config, local bool) error {
 			}
 			path = filepath.Join(localDir, "config.toml")
 		}
-		// When saving locally, merge with existing local config
-		// to preserve global-only data
+
+		// When saving locally, preserve cache settings from existing config
+		// but replace targets and repos completely with the new cfg
 		existing := &Config{
 			Targets: make(map[string]Target),
 			Repos:   make(map[string]RepoInfo),
 		}
 		_ = l.loadFile(path, existing)
-		// Merge: new cfg takes precedence for its keys
-		for k, v := range cfg.Targets {
-			existing.Targets[k] = v
+
+		// Preserve cache path from existing config, use new if set
+		if existing.Cache.Path != "" && cfg.Cache.Path == "" {
+			cfg.Cache.Path = existing.Cache.Path
 		}
-		for k, v := range cfg.Repos {
-			existing.Repos[k] = v
-		}
-		cfg = existing
+
+		// Completely replace targets and repos with new cfg
+		// (new cfg represents the complete local state)
 	} else {
 		path = l.globalPath
 		// Ensure directory exists

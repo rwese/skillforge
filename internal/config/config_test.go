@@ -154,9 +154,10 @@ func TestLoaderSaveAndLoad(t *testing.T) {
 		},
 		Targets: map[string]Target{
 			"test-target": {
-				Name:    "test-target",
-				Path:    "/test/path",
-				Enabled: true,
+				Name:       "test-target",
+				GlobalPath: "/test/path",
+				LocalPath:  "/test/local",
+				Enabled:    true,
 			},
 		},
 		Repos: map[string]RepoInfo{
@@ -209,9 +210,10 @@ func TestLoaderSaveLocalCreatesDir(t *testing.T) {
 		},
 		Targets: map[string]Target{
 			"local-target": {
-				Name:    "local-target",
-				Path:    "/local/path",
-				Enabled: true,
+				Name:       "local-target",
+				GlobalPath: "/local/global",
+				LocalPath:  "/local/path",
+				Enabled:    true,
 			},
 		},
 	}
@@ -300,7 +302,8 @@ func TestLoad_GlobalOnly(t *testing.T) {
 	globalCfg := `cache.path = "/global/cache"
 
 [targets.pi]
-path = "/global/pi"
+globalPath = "/global/pi"
+localPath = "/local/pi"
 enabled = true
 `
 	if err := os.WriteFile(globalPath, []byte(globalCfg), 0644); err != nil {
@@ -325,8 +328,8 @@ enabled = true
 	if !ok {
 		t.Fatal("Expected target 'pi' not found")
 	}
-	if pi.Path != "/global/pi" {
-		t.Errorf("pi.Path = %q, want %q", pi.Path, "/global/pi")
+	if pi.GlobalPath != "/global/pi" {
+		t.Errorf("pi.GlobalPath = %q, want %q", pi.GlobalPath, "/global/pi")
 	}
 	if !pi.Enabled {
 		t.Error("pi.Enabled = false, want true")
@@ -345,7 +348,8 @@ func TestLoad_LocalOnly(t *testing.T) {
 	localCfg := `cache.path = "/local/cache"
 
 [targets.local]
-path = "/local/skills"
+globalPath = "/global/local"
+localPath = "/local/skills"
 enabled = true
 `
 	if err := os.WriteFile(localPath, []byte(localCfg), 0644); err != nil {
@@ -375,8 +379,8 @@ enabled = true
 	if !ok {
 		t.Fatal("Expected target 'local' not found")
 	}
-	if local.Path != "/local/skills" {
-		t.Errorf("local.Path = %q, want %q", local.Path, "/local/skills")
+	if local.LocalPath != "/local/skills" {
+		t.Errorf("local.LocalPath = %q, want %q", local.LocalPath, "/local/skills")
 	}
 }
 
@@ -424,7 +428,8 @@ func TestLoad_LocalOnlyScope(t *testing.T) {
 	globalCfg := `cache.path = "/global/cache"
 
 [targets.global-target]
-path = "/global/only"
+globalPath = "/global/only"
+localPath = "/local/only"
 enabled = true
 
 [repos.global-repo]
@@ -440,7 +445,8 @@ updated = "2026-04-28"
 	localCfg := `cache.path = "/local/cache"
 
 [targets.local-target]
-path = "/local/skills"
+globalPath = "/global/local"
+localPath = "/local/skills"
 enabled = true
 
 [repos.local-repo]
@@ -506,7 +512,8 @@ func TestLoad_LocalScopeTarget(t *testing.T) {
 	globalCfg := `cache.path = "/global/cache"
 
 [targets.pi]
-path = "/global/pi"
+globalPath = "/global/pi"
+localPath = "/local/pi"
 enabled = true
 `
 	if err := os.WriteFile(globalPath, []byte(globalCfg), 0644); err != nil {
@@ -517,7 +524,8 @@ enabled = true
 	localCfg := `cache.path = "/local/cache"
 
 [targets.pi]
-path = "/local/pi"
+globalPath = "/global/pi"
+localPath = "/local/pi"
 enabled = false
 `
 	if err := os.WriteFile(localPath, []byte(localCfg), 0644); err != nil {
@@ -549,8 +557,8 @@ enabled = false
 	if !ok {
 		t.Fatal("Expected target 'pi' not found")
 	}
-	if pi.Path != "/local/pi" {
-		t.Errorf("pi.Path = %q, want %q", pi.Path, "/local/pi")
+	if pi.GlobalPath != "/global/pi" {
+		t.Errorf("pi.GlobalPath = %q, want %q", pi.GlobalPath, "/global/pi")
 	}
 	if pi.Enabled {
 		t.Error("pi.Enabled = true, want false")
@@ -571,7 +579,8 @@ func TestLoad_GlobalOnlyScope(t *testing.T) {
 	globalCfg := `cache.path = "/global/cache"
 
 [targets.global-target]
-path = "/global/only"
+globalPath = "/global/only"
+localPath = "/local/only"
 enabled = true
 
 [repos.global-repo]
@@ -587,7 +596,8 @@ updated = "2026-04-28"
 	localCfg := `cache.path = "/local/cache"
 
 [targets.local-target]
-path = "/local/skills"
+globalPath = "/global/local"
+localPath = "/local/skills"
 enabled = true
 
 [repos.local-repo]
@@ -650,7 +660,8 @@ func TestSave_LocalPreservesGlobal(t *testing.T) {
 
 	// Write global config
 	globalCfg := `[targets.pi]
-path = "/global/pi"
+globalPath = "/global/pi"
+localPath = "/local/pi"
 enabled = true
 
 [repos.grimoire]
@@ -663,7 +674,8 @@ branch = "main"
 
 	// Write existing local config
 	localCfg := `[targets.local]
-path = "/local/skills"
+globalPath = "/global/local"
+localPath = "/local/skills"
 enabled = true
 `
 	if err := os.WriteFile(localPath, []byte(localCfg), 0644); err != nil {
@@ -685,12 +697,12 @@ enabled = true
 		Targets: map[string]Target{
 			"local": {
 				Name:    "local",
-				Path:    "/local/skills",
+				GlobalPath: "/local/skills",
 				Enabled: true,
 			},
 			"new-local": {
 				Name:    "new-local",
-				Path:    "/new/local",
+				GlobalPath: "/new/local",
 				Enabled: true,
 			},
 		},
@@ -729,7 +741,8 @@ func TestSave_GlobalPreservesLocal(t *testing.T) {
 
 	// Write global config
 	globalCfg := `[targets.pi]
-path = "/global/pi"
+globalPath = "/global/pi"
+localPath = "/local/pi"
 enabled = true
 `
 	if err := os.WriteFile(globalPath, []byte(globalCfg), 0644); err != nil {
@@ -738,7 +751,8 @@ enabled = true
 
 	// Write local config
 	localCfg := `[targets.local]
-path = "/local/skills"
+globalPath = "/global/local"
+localPath = "/local/skills"
 enabled = true
 
 [repos.local-repo]
@@ -764,12 +778,12 @@ branch = "main"
 		Targets: map[string]Target{
 			"pi": {
 				Name:    "pi",
-				Path:    "/global/pi",
+				GlobalPath: "/global/pi",
 				Enabled: true,
 			},
 			"new-global": {
 				Name:    "new-global",
-				Path:    "/new/global",
+				GlobalPath: "/new/global",
 				Enabled: true,
 			},
 		},
@@ -871,5 +885,163 @@ url = "https://github.com/local/override"
 
 	if repos2["global-repo"].URL != "https://github.com/local/override" {
 		t.Errorf("LoadAllRepos() local override not applied, got %s", repos2["global-repo"].URL)
+	}
+}
+
+// --- Regression Tests ---
+
+// TestSave_LocalRemoveTarget verifies that deleting a target actually removes it.
+func TestSave_LocalRemoveTarget(t *testing.T) {
+	tmpDir := t.TempDir()
+	localDir := filepath.Join(tmpDir, ".skillforge")
+	if err := os.MkdirAll(localDir, 0755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	localPath := filepath.Join(localDir, "config.toml")
+
+	// Write initial config with two targets
+	initialCfg := `[cache]
+  path = "/cache"
+
+[targets.target-a]
+globalPath = "/path/a/global"
+localPath = "/path/a"
+enabled = true
+
+[targets.target-b]
+globalPath = "/path/b/global"
+localPath = "/path/b"
+enabled = true
+`
+	if err := os.WriteFile(localPath, []byte(initialCfg), 0644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	// Change to tmpDir
+	oldCwd, _ := os.Getwd()
+	defer os.Chdir(oldCwd)
+	os.Chdir(tmpDir)
+
+	loader := &Loader{scope: ScopeLocal}
+
+	// Simulate removing target-b
+	cfg := &Config{
+		Cache: CacheConfig{Path: "/cache"},
+		Targets: map[string]Target{
+			"target-a": {
+				Name:       "target-a",
+				GlobalPath: "/path/a/global",
+				LocalPath:  "/path/a",
+				Enabled:    true,
+			},
+		},
+	}
+
+	if err := loader.Save(cfg, true); err != nil {
+		t.Fatalf("Save(local=true) error = %v", err)
+	}
+
+	loader2 := &Loader{scope: ScopeLocal}
+	loadedCfg, err := loader2.Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if _, ok := loadedCfg.Targets["target-a"]; !ok {
+		t.Error("target-a should still exist")
+	}
+	if _, ok := loadedCfg.Targets["target-b"]; ok {
+		t.Error("REGRESSION: target-b was not removed")
+	}
+}
+
+// TestSave_LocalRemoveAllTargets verifies removing all targets works.
+func TestSave_LocalRemoveAllTargets(t *testing.T) {
+	tmpDir := t.TempDir()
+	localDir := filepath.Join(tmpDir, ".skillforge")
+	if err := os.MkdirAll(localDir, 0755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	localPath := filepath.Join(localDir, "config.toml")
+
+	initialCfg := `[cache]
+  path = "/cache"
+
+[targets.target-1]
+globalPath = "/path/1/global"
+localPath = "/path/1"
+enabled = true
+
+[targets.target-2]
+globalPath = "/path/2/global"
+localPath = "/path/2"
+enabled = true
+`
+	if err := os.WriteFile(localPath, []byte(initialCfg), 0644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	oldCwd, _ := os.Getwd()
+	defer os.Chdir(oldCwd)
+	os.Chdir(tmpDir)
+
+	loader := &Loader{scope: ScopeLocal}
+	cfg := &Config{Cache: CacheConfig{Path: "/cache"}, Targets: map[string]Target{}}
+
+	if err := loader.Save(cfg, true); err != nil {
+		t.Fatalf("Save(local=true) error = %v", err)
+	}
+
+	loader2 := &Loader{scope: ScopeLocal}
+	loadedCfg, err := loader2.Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if len(loadedCfg.Targets) != 0 {
+		t.Errorf("REGRESSION: Expected 0 targets, got %d", len(loadedCfg.Targets))
+	}
+}
+
+// TestSave_LocalPreservesCache verifies cache path is preserved.
+func TestSave_LocalPreservesCache(t *testing.T) {
+	tmpDir := t.TempDir()
+	localDir := filepath.Join(tmpDir, ".skillforge")
+	if err := os.MkdirAll(localDir, 0755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	localPath := filepath.Join(localDir, "config.toml")
+
+	initialCfg := `[cache]
+  path = "/original/cache"
+
+[targets.target-a]
+globalPath = "/path/global"
+localPath = "/path"
+enabled = true
+`
+	if err := os.WriteFile(localPath, []byte(initialCfg), 0644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	oldCwd, _ := os.Getwd()
+	defer os.Chdir(oldCwd)
+	os.Chdir(tmpDir)
+
+	loader := &Loader{scope: ScopeLocal}
+	cfg := &Config{Cache: CacheConfig{Path: ""}, Targets: map[string]Target{}}
+
+	if err := loader.Save(cfg, true); err != nil {
+		t.Fatalf("Save(local=true) error = %v", err)
+	}
+
+	loader2 := &Loader{scope: ScopeLocal}
+	loadedCfg, err := loader2.Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if loadedCfg.Cache.Path != "/original/cache" {
+		t.Errorf("Cache.Path = %q, want %q", loadedCfg.Cache.Path, "/original/cache")
 	}
 }

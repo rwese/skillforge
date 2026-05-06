@@ -37,26 +37,38 @@ var targetListCmd = &cobra.Command{
 }
 
 func runTargetList(cmd *cobra.Command, args []string) error {
-	cfg, err := loadConfig()
+	// When scope is empty, show targets from both local and global configs
+	var targets []TargetOutput
+
+	// Load global targets
+	globalCfg, err := loadConfigScope(config.ScopeGlobal)
 	if err != nil {
 		return err
 	}
-
-	// Collect targets
-	var targets []TargetOutput
-	for name, target := range cfg.Targets {
-		scopeStr := "both"
-		if target.Scope == config.TargetScopeLocal {
-			scopeStr = "local"
-		} else if target.Scope == config.TargetScopeGlobal {
-			scopeStr = "global"
-		}
+	for name, target := range globalCfg.Targets {
 		targets = append(targets, TargetOutput{
-			Name:    name,
-			Path:    target.Path,
-			Enabled: target.Enabled,
-			Scope:   scopeStr,
+			Name:       name,
+			GlobalPath: target.GlobalPath,
+			LocalPath:  target.LocalPath,
+			Enabled:    target.Enabled,
 		})
+	}
+
+	// Load local targets (only if local config exists)
+	localCfg, err := loadConfigScope(config.ScopeLocal)
+	if err == nil {
+		for name, target := range localCfg.Targets {
+			// Skip if already in global (local takes precedence for same name)
+			if _, exists := globalCfg.Targets[name]; exists {
+				continue
+			}
+			targets = append(targets, TargetOutput{
+				Name:       name,
+				GlobalPath: target.GlobalPath,
+				LocalPath:  target.LocalPath,
+				Enabled:    target.Enabled,
+			})
+		}
 	}
 
 	if len(targets) == 0 {
@@ -91,25 +103,20 @@ func init() {
 }
 
 var targetAddCmd = &cobra.Command{
-	Use:   "add [name] [path]",
+	Use:   "add [name] [globalPath] [localPath]",
 	Short: "Add a new target",
-	Args:  cobra.ExactArgs(2),
+	Args:  cobra.ExactArgs(3),
 	RunE:  runTargetAdd,
 }
 
-var enableFlag bool
-var forLocalFlag bool
-var forGlobalFlag bool
-
 func init() {
 	targetAddCmd.Flags().BoolVarP(&enableFlag, "enable", "e", false, "Enable target after creation")
-	targetAddCmd.Flags().BoolVar(&forLocalFlag, "for-local", false, "Target is for local scope only")
-	targetAddCmd.Flags().BoolVar(&forGlobalFlag, "for-global", false, "Target is for global scope only")
 }
 
 func runTargetAdd(cmd *cobra.Command, args []string) error {
 	name := args[0]
-	path := config.ExpandPath(args[1])
+	globalPath := config.ExpandPath(args[1])
+	localPath := config.ExpandPath(args[2])
 
 	cfg, err := loadConfig()
 	if err != nil {
@@ -121,23 +128,10 @@ func runTargetAdd(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("target %q already exists", name)
 	}
 
-	// Determine target scope
-	if forLocalFlag && forGlobalFlag {
-		return fmt.Errorf("cannot specify both --for-local and --for-global")
-	}
-	if !forLocalFlag && !forGlobalFlag {
-		return fmt.Errorf("must specify either --for-local or --for-global")
-	}
-
-	targetScope := config.TargetScopeLocal
-	if forGlobalFlag {
-		targetScope = config.TargetScopeGlobal
-	}
-
 	cfg.Targets[name] = config.Target{
-		Path:    path,
-		Enabled: enableFlag,
-		Scope:   targetScope,
+		GlobalPath: globalPath,
+		LocalPath:  localPath,
+		Enabled:    enableFlag,
 	}
 
 	if err := saveConfig(cfg); err != nil {
@@ -146,14 +140,14 @@ func runTargetAdd(cmd *cobra.Command, args []string) error {
 
 	if parseFormat(formatFlag) == formatJSON {
 		return printJSON(TargetOutput{
-			Name:    name,
-			Path:    path,
-			Enabled: enableFlag,
-			Scope:   targetScope.String(),
+			Name:       name,
+			GlobalPath: globalPath,
+			LocalPath:  localPath,
+			Enabled:    enableFlag,
 		})
 	}
 
-	fmt.Printf("✓ Added target %s (scope: %s)\n", name, targetScope.String())
+	fmt.Printf("✓ Added target %s\n", name)
 	return nil
 }
 
@@ -180,7 +174,7 @@ func runTargetRemove(cmd *cobra.Command, args []string) error {
 
 	// Confirm if not using --yes
 	if !yesFlag {
-		fmt.Printf("Remove target %q (%s)? ", name, config.ContractPath(target.Path))
+		fmt.Printf("Remove target %q (%s)? ", name, config.ContractPath(target.GlobalPath))
 		if !confirm("") {
 			return fmt.Errorf("cancelled")
 		}
@@ -248,9 +242,10 @@ func runTargetEnable(cmd *cobra.Command, args []string) error {
 
 	if parseFormat(formatFlag) == formatJSON {
 		return printJSON(TargetOutput{
-			Name:    name,
-			Path:    target.Path,
-			Enabled: true,
+			Name:       name,
+			GlobalPath: target.GlobalPath,
+			LocalPath:  target.LocalPath,
+			Enabled:    true,
 		})
 	}
 
@@ -307,9 +302,10 @@ func runTargetDisable(cmd *cobra.Command, args []string) error {
 
 	if parseFormat(formatFlag) == formatJSON {
 		return printJSON(TargetOutput{
-			Name:    name,
-			Path:    target.Path,
-			Enabled: false,
+			Name:       name,
+			GlobalPath: target.GlobalPath,
+			LocalPath:  target.LocalPath,
+			Enabled:    false,
 		})
 	}
 

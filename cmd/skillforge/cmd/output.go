@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/rwese/skillforge/internal/config"
 )
 
 // OutputFormat represents the output format type.
@@ -68,10 +67,10 @@ var cellStyle = lipgloss.NewStyle().
 
 // TargetOutput represents a target for JSON output.
 type TargetOutput struct {
-	Name    string `json:"name"`
-	Path    string `json:"path"`
-	Enabled bool   `json:"enabled"`
-	Scope   string `json:"scope"` // "local" or "global"
+	Name       string `json:"name"`
+	GlobalPath string `json:"globalPath"`
+	LocalPath  string `json:"localPath"`
+	Enabled    bool   `json:"enabled"`
 }
 
 // --- Skill Output Types ---
@@ -130,42 +129,39 @@ func formatTargetTable(targets []TargetOutput) string {
 
 	// Calculate column widths
 	nameWidth := 10
-	pathWidth := 20
-	scopeWidth := 10
+	globalPathWidth := 20
+	localPathWidth := 20
 	for _, t := range targets {
 		if len(t.Name) > nameWidth {
 			nameWidth = len(t.Name)
 		}
-		contracted := config.ContractPath(t.Path)
-		if len(contracted) > pathWidth {
-			pathWidth = len(contracted)
+		if len(t.GlobalPath) > globalPathWidth {
+			globalPathWidth = len(t.GlobalPath)
 		}
-		if len(t.Scope) > scopeWidth {
-			scopeWidth = len(t.Scope)
+		if len(t.LocalPath) > localPathWidth {
+			localPathWidth = len(t.LocalPath)
 		}
 	}
 
 	// Print header
 	header := fmt.Sprintf("%-*s  %-*s  %-*s  %s",
 		nameWidth, "TARGET",
-		pathWidth, "PATH",
-		scopeWidth, "SCOPE",
+		globalPathWidth, "GLOBAL",
+		localPathWidth, "LOCAL",
 		"STATUS")
 	b.WriteString(header)
 	b.WriteString("\n")
 
 	// Print separator
 	sep := strings.Repeat("─", nameWidth) + "  " +
-		strings.Repeat("─", pathWidth) + "  " +
-		strings.Repeat("─", scopeWidth) + "  " +
+		strings.Repeat("─", globalPathWidth) + "  " +
+		strings.Repeat("─", localPathWidth) + "  " +
 		"───────"
 	b.WriteString(sep)
 	b.WriteString("\n")
 
 	// Print rows
 	for _, t := range targets {
-		path := config.ContractPath(t.Path)
-		scope := t.Scope
 		status := "disabled"
 		statusColor := Error
 		if t.Enabled {
@@ -173,20 +169,17 @@ func formatTargetTable(targets []TargetOutput) string {
 			statusColor = Success
 		}
 
-		scopeColor := lipgloss.NewStyle().Foreground(lipgloss.Color("#3498DB"))
+		globalPath := t.GlobalPath
+		localPath := t.LocalPath
+
 		row := fmt.Sprintf("%-*s  %-*s  %-*s  %s",
 			nameWidth, t.Name,
-			pathWidth, path,
-			scopeWidth, scope,
+			globalPathWidth, globalPath,
+			localPathWidth, localPath,
 			status)
 		if UseColors() {
-			// Find position of scope to colorize
-			scopeStart := nameWidth + 2 + pathWidth + 2
-			scopeEnd := scopeStart + scopeWidth
-			b.WriteString(row[:scopeStart])
-			b.WriteString(scopeColor.Render(scope))
-			b.WriteString(row[scopeEnd:len(row)-len(status)])
-			b.WriteString(statusColor.Render(status))
+			b.WriteString(row[:len(row)-len(status)-1])
+			b.WriteString(statusColor.Render(" " + status))
 			b.WriteString("\n")
 		} else {
 			b.WriteString(row)

@@ -19,7 +19,7 @@ var skillCmd = &cobra.Command{
 	Short: "Manage installed skills",
 	Long: `Manage skills installed to targets.
 
-Skills are copied from cached repositories to agent skill directories.`,
+Skills are linked from cached repositories to agent skill directories.`,
 }
 
 func init() {
@@ -28,7 +28,6 @@ func init() {
 	skillCmd.AddCommand(skillListCmd)
 	skillCmd.AddCommand(skillRemoveCmd)
 	skillCmd.AddCommand(skillSearchCmd)
-	skillCmd.AddCommand(skillUpdateCmd)
 }
 
 var (
@@ -41,8 +40,6 @@ func init() {
 	skillListCmd.Flags().StringVarP(&targetFlag, "target", "t", "", "Filter by target")
 	skillListCmd.Flags().StringVarP(&formatFlag, "format", "f", "text", "Output format: text, json")
 	skillRemoveCmd.Flags().StringVarP(&targetFlag, "target", "t", "", "Remove from specific target")
-	skillUpdateCmd.Flags().BoolVarP(&checkFlag, "check", "c", false, "Check for updates without applying")
-	skillUpdateCmd.Flags().StringVarP(&targetFlag, "target", "t", "", "Update skills for specific target")
 }
 
 var skillInstallCmd = &cobra.Command{
@@ -84,7 +81,6 @@ func runSkillInstall(cmd *cobra.Command, args []string) error {
 
 		// Find the skill across all repos (use merged repos, not scoped)
 		var targetSkill *grimoire.Skill
-		var commit string
 
 		for repoName, info := range allRepos {
 			if !cache.Exists(repoName) {
@@ -99,7 +95,6 @@ func runSkillInstall(cmd *cobra.Command, args []string) error {
 			for i := range skills {
 				if skills[i].Name == skillName {
 					targetSkill = &skills[i]
-					commit, _ = cache.GetCommit(repoName)
 					break
 				}
 			}
@@ -118,7 +113,7 @@ func runSkillInstall(cmd *cobra.Command, args []string) error {
 
 		// Dry-run mode
 		if dryRunFlag {
-			fmt.Printf("[DRY-RUN] Would install %q to %d path(s): %v\n", skillName, len(installPaths), installPaths)
+			fmt.Printf("[DRY-RUN] Would link %q to %d path(s): %v\n", skillName, len(installPaths), installPaths)
 			continue
 		}
 
@@ -136,23 +131,13 @@ func runSkillInstall(cmd *cobra.Command, args []string) error {
 				continue
 			}
 
-			fmt.Printf("Installing %s to %s...\n", skillName, ip.Label)
+			fmt.Printf("Linking %s to %s...\n", skillName, ip.Label)
 
-			// Use progress callback if verbose
-			var installErr error
-			if verboseFlag {
-				installErr = repo.InstallSkillWithProgress(*targetSkill, targetPath, commit, func(src, dst string) {
-					verbose("Copied %s -> %s", src, dst)
-				})
-			} else {
-				installErr = repo.InstallSkill(*targetSkill, targetPath, commit)
-			}
-
-			if installErr != nil {
-				errors = append(errors, fmt.Errorf("installing to %s: %w", ip.Label, installErr))
+			if err := repo.LinkSkill(*targetSkill, targetPath); err != nil {
+				errors = append(errors, fmt.Errorf("linking to %s: %w", ip.Label, err))
 				continue
 			}
-			fmt.Printf("  ✓ %s installed to %s\n", skillName, ip.Label)
+			fmt.Printf("  ✓ %s linked to %s\n", skillName, ip.Label)
 		}
 	}
 
@@ -174,7 +159,7 @@ type InstallPath struct {
 }
 
 // getInstallPaths returns paths to install skills to based on target and scope flags.
-// Default is local scope. Use -s global for global targets only.
+// Default is all scopes. Use -s global for global targets, -s local for local targets.
 func getInstallPaths(targetName, scope string) ([]InstallPath, error) {
 	globalCfg, err := loadConfigScope(config.ScopeGlobal)
 	if err != nil {
@@ -187,8 +172,8 @@ func getInstallPaths(targetName, scope string) ([]InstallPath, error) {
 	var paths []InstallPath
 
 	// Determine which scopes to include
-	includeGlobal := scope == "global"
-	includeLocal := scope == "local" || scope == "" // Default to local
+	includeGlobal := scope == "global" || scope == ""
+	includeLocal := scope == "local" || scope == ""
 
 	if targetName != "" {
 		// Specific target - check if it matches the requested scope
@@ -198,7 +183,7 @@ func getInstallPaths(targetName, scope string) ([]InstallPath, error) {
 		if includeGlobal {
 			if target, ok := globalCfg.Targets[targetName]; ok && target.Enabled {
 				paths = append(paths, InstallPath{
-					Path:  config.ExpandPath(target.Path),
+					Path:  config.ExpandPath(target.GlobalPath),
 					Label: fmt.Sprintf("%s (global)", targetName),
 				})
 				found = true
@@ -209,7 +194,7 @@ func getInstallPaths(targetName, scope string) ([]InstallPath, error) {
 		if includeLocal && localConfigExists && localCfg != nil {
 			if target, ok := localCfg.Targets[targetName]; ok && target.Enabled {
 				paths = append(paths, InstallPath{
-					Path:  config.ExpandPath(target.Path),
+					Path:  config.ExpandPath(target.LocalPath),
 					Label: fmt.Sprintf("%s (local)", targetName),
 				})
 				found = true
@@ -227,7 +212,7 @@ func getInstallPaths(targetName, scope string) ([]InstallPath, error) {
 					continue
 				}
 				paths = append(paths, InstallPath{
-					Path:  config.ExpandPath(target.Path),
+					Path:  config.ExpandPath(target.GlobalPath),
 					Label: fmt.Sprintf("%s (global)", name),
 				})
 			}
@@ -239,7 +224,7 @@ func getInstallPaths(targetName, scope string) ([]InstallPath, error) {
 					continue
 				}
 				paths = append(paths, InstallPath{
-					Path:  config.ExpandPath(target.Path),
+					Path:  config.ExpandPath(target.LocalPath),
 					Label: fmt.Sprintf("%s (local)", name),
 				})
 			}
@@ -250,12 +235,15 @@ func getInstallPaths(targetName, scope string) ([]InstallPath, error) {
 }
 
 // shouldUseScope returns true if the given scope should be used.
+// Empty scopeFlag means all scopes.
 func shouldUseScope(scopeFlag, scopeValue string) bool {
 	switch scopeFlag {
 	case "global":
 		return scopeValue == "global"
 	case "local":
 		return scopeValue == "local"
+	case "":
+		return true // All scopes when no flag specified
 	default:
 		return true
 	}
@@ -296,7 +284,7 @@ func runSkillList(cmd *cobra.Command, args []string) error {
 
 		// List global skills
 		if shouldUseScope(scopeFlag, "global") {
-			path := config.ExpandPath(target.Path)
+			path := config.ExpandPath(target.GlobalPath)
 			skills, err := repo.ListInstalledSkills(path)
 			if err != nil {
 				if !os.IsNotExist(err) {
@@ -304,15 +292,10 @@ func runSkillList(cmd *cobra.Command, args []string) error {
 				}
 			}
 			for _, skill := range skills {
-				commit := skill.Grimoire.Commit
-				if len(commit) > 7 {
-					commit = commit[:7]
-				}
 				globalSkills = append(globalSkills, SkillOutput{
 					Name:   skill.Name,
-					Commit: commit,
 					Target: fmt.Sprintf("%s/global", targetName),
-					Source: skill.Grimoire.Source,
+					Source: skill.Source,
 				})
 			}
 		}
@@ -330,7 +313,7 @@ func runSkillList(cmd *cobra.Command, args []string) error {
 
 			// List local skills
 			if shouldUseScope(scopeFlag, "local") {
-				path := config.ExpandPath(target.Path)
+				path := config.ExpandPath(target.LocalPath)
 				skills, err := repo.ListInstalledSkills(path)
 				if err != nil {
 					if !os.IsNotExist(err) {
@@ -338,15 +321,10 @@ func runSkillList(cmd *cobra.Command, args []string) error {
 					}
 				}
 				for _, skill := range skills {
-					commit := skill.Grimoire.Commit
-					if len(commit) > 7 {
-						commit = commit[:7]
-					}
 					localSkills = append(localSkills, SkillOutput{
 						Name:   skill.Name,
-						Commit: commit,
 						Target: fmt.Sprintf("%s/local", targetName),
-						Source: skill.Grimoire.Source,
+						Source: skill.Source,
 					})
 				}
 			}
@@ -446,15 +424,15 @@ func getRemovePaths(targetName, scope string) []RemovePath {
 	var paths []RemovePath
 
 	// Determine which scopes to include
-	includeGlobal := scope == "global"
-	includeLocal := scope != "global" // Default to local if not global
+	includeGlobal := scope == "global" || scope == ""
+	includeLocal := scope == "local" || scope == ""
 
 	if targetName != "" {
 		// Specific target
 		if includeGlobal {
 			if target, ok := globalCfg.Targets[targetName]; ok && target.Enabled {
 				paths = append(paths, RemovePath{
-					Path:  config.ExpandPath(target.Path),
+					Path:  config.ExpandPath(target.GlobalPath),
 					Label: fmt.Sprintf("%s (global)", targetName),
 				})
 			}
@@ -463,7 +441,7 @@ func getRemovePaths(targetName, scope string) []RemovePath {
 		if includeLocal && localConfigExists && localCfg != nil {
 			if target, ok := localCfg.Targets[targetName]; ok && target.Enabled {
 				paths = append(paths, RemovePath{
-					Path:  config.ExpandPath(target.Path),
+					Path:  config.ExpandPath(target.LocalPath),
 					Label: fmt.Sprintf("%s (local)", targetName),
 				})
 			}
@@ -476,7 +454,7 @@ func getRemovePaths(targetName, scope string) []RemovePath {
 					continue
 				}
 				paths = append(paths, RemovePath{
-					Path:  config.ExpandPath(target.Path),
+					Path:  config.ExpandPath(target.GlobalPath),
 					Label: fmt.Sprintf("%s (global)", name),
 				})
 			}
@@ -488,7 +466,7 @@ func getRemovePaths(targetName, scope string) []RemovePath {
 					continue
 				}
 				paths = append(paths, RemovePath{
-					Path:  config.ExpandPath(target.Path),
+					Path:  config.ExpandPath(target.LocalPath),
 					Label: fmt.Sprintf("%s (local)", name),
 				})
 			}
@@ -595,185 +573,4 @@ func runSkillSearch(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
-}
-
-var skillUpdateCmd = &cobra.Command{
-	Use:   "update",
-	Short: "Check for skill updates",
-	RunE:  runSkillUpdate,
-}
-
-func runSkillUpdate(cmd *cobra.Command, args []string) error {
-	cfg, err := loadConfig()
-	if err != nil {
-		return err
-	}
-
-	cache := repo.NewCache(config.ExpandPath(cfg.Cache.Path))
-
-	// First, update repos if not in check mode
-	if !checkFlag {
-		fmt.Println("Checking repository updates...")
-		if err := runRepoUpdate(cmd, []string{}); err != nil {
-			fmt.Printf("  ! Warning: repo update failed: %v\n", err)
-		}
-	}
-
-	fmt.Println("Checking skill updates...")
-	hasUpdates := false
-
-	globalCfg, err := loadConfigScope(config.ScopeGlobal)
-	if err != nil {
-		return err
-	}
-
-	localCfg, err := loadConfigScope(config.ScopeLocal)
-	localConfigExists := config.DetectLocalPath() != ""
-
-	// Check global targets
-	for targetName, target := range globalCfg.Targets {
-		if targetFlag != "" && targetFlag != targetName {
-			continue
-		}
-		if !target.Enabled {
-			continue
-		}
-
-		if shouldUseScope(scopeFlag, "global") {
-			path := config.ExpandPath(target.Path)
-			updates, err := checkSkillUpdates(targetName, "global", path, cfg, cache)
-			if err != nil {
-				fmt.Printf("  ! Error checking %s (global): %v\n", targetName, err)
-			}
-			hasUpdates = hasUpdates || updates
-		}
-	}
-
-	// Check local targets
-	if localConfigExists && localCfg != nil {
-		for targetName, target := range localCfg.Targets {
-			if targetFlag != "" && targetFlag != targetName {
-				continue
-			}
-			if !target.Enabled {
-				continue
-			}
-
-			if shouldUseScope(scopeFlag, "local") {
-				path := config.ExpandPath(target.Path)
-				updates, err := checkSkillUpdates(targetName, "local", path, cfg, cache)
-				if err != nil {
-					fmt.Printf("  ! Error checking %s (local): %v\n", targetName, err)
-				}
-				hasUpdates = hasUpdates || updates
-			}
-		}
-	}
-
-	if !hasUpdates && checkFlag {
-		fmt.Println("  All skills up to date.")
-	}
-
-	return nil
-}
-
-func checkSkillUpdates(targetName, scope string, path string, cfg *config.Config, cache *repo.Cache) (bool, error) {
-	skills, err := repo.ListInstalledSkills(path)
-	if err != nil {
-		return false, nil
-	}
-
-	if len(skills) == 0 {
-		if verboseFlag {
-			fmt.Printf("Checking %s (%s): no skills installed\n", targetName, scope)
-		}
-		return false, nil
-	}
-
-	hasUpdates := false
-	label := fmt.Sprintf("%s (%s)", targetName, scope)
-
-	if verboseFlag {
-		fmt.Printf("Checking %d skills in %s...\n", len(skills), label)
-	}
-
-	checkedCount := 0
-
-	for _, skill := range skills {
-		// Find the source repo
-		var currentCommit string
-		var newCommit string
-		var repoName string
-
-		for rn, info := range cfg.Repos {
-			if info.URL == skill.Grimoire.Source {
-				repoName = rn
-				currentCommit = skill.Grimoire.Commit
-				if cache.Exists(rn) {
-					newCommit, _ = cache.GetCommit(rn)
-				}
-				break
-			}
-		}
-
-		if repoName == "" {
-			if verboseFlag {
-				source := skill.Grimoire.Source
-				if source == "" {
-					source = "<unknown>"
-				}
-				fmt.Printf("  - %s: no cached repo for %s\n", skill.Name, source)
-			}
-			continue
-		}
-
-		checkedCount++
-
-		if currentCommit != newCommit && newCommit != "" {
-			hasUpdates = true
-			if checkFlag {
-				fmt.Printf("  ↻ %s has updates\n", skill.Name)
-				if verboseFlag {
-					fmt.Printf("     %s → %s\n", shortenCommit(currentCommit), shortenCommit(newCommit))
-				}
-			} else {
-				// Re-install skill with new commit
-				fmt.Printf("Updating %s in %s...\n", skill.Name, label)
-				if verboseFlag {
-					fmt.Printf("     %s → %s\n", shortenCommit(currentCommit), shortenCommit(newCommit))
-				}
-
-				skills, _ := repo.DiscoverSkills(cache.PathFor(repoName), cfg.Repos[repoName].URL)
-				for _, s := range skills {
-					if s.Name == skill.Name {
-						targetPath := filepath.Join(path, skill.Name)
-						if err := repo.InstallSkill(s, targetPath, newCommit); err != nil {
-							fmt.Printf("  ! Failed to update %s: %v\n", skill.Name, err)
-						} else {
-							fmt.Printf("  ✓ %s updated\n", skill.Name)
-						}
-						break
-					}
-				}
-			}
-		} else {
-			if checkFlag || verboseFlag {
-				fmt.Printf("  ✓ %s is up to date\n", skill.Name)
-			}
-		}
-	}
-
-	if verboseFlag && !hasUpdates && !checkFlag {
-		fmt.Printf("Checked %d skills: all up to date\n", checkedCount)
-	}
-
-	return hasUpdates, nil
-}
-
-// shortenCommit returns first 7 chars of commit or empty string.
-func shortenCommit(commit string) string {
-	if len(commit) >= 7 {
-		return commit[:7]
-	}
-	return commit
 }

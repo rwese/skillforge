@@ -13,15 +13,15 @@ import (
 
 var syncCmd = &cobra.Command{
 	Use:   "sync",
-	Short: "Sync repositories and update installed skills",
-	Long: `Sync repositories and update installed skills.
+	Short: "Sync repositories and install skills",
+	Long: `Sync repositories and install missing skills.
 
-This command performs up to three operations:
+This command performs up to two operations:
 1. Updates all cached repositories (repo update)
-2. Updates all installed skills to latest versions (skill update)
-3. Syncs skills across agents (agent sync) - installs missing skills
+2. Syncs skills across agents (agent sync) - installs missing skills as symlinks
 
-Use --check to see what would be updated without making changes.
+Skills are always linked to the latest version from cached repositories.
+Use --check to see what would be done without making changes.
 Use --skip-agent-sync to skip the agent synchronization step.`,
 	RunE: runSync,
 }
@@ -47,14 +47,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 		fmt.Printf("  ! Warning: repo sync failed: %v\n", err)
 	}
 
-	// Step 2: Sync installed skills (update to latest)
-	fmt.Println()
-	fmt.Println("=== Syncing installed skills ===")
-	if err := runSkillUpdate(cmd, nil); err != nil {
-		fmt.Printf("  ! Warning: skill sync failed: %v\n", err)
-	}
-
-	// Step 3: Sync across agents (install missing skills)
+	// Step 2: Sync across agents (install missing skills as symlinks)
 	if !skipAgentSyncFlag {
 		fmt.Println()
 		if err := runAgentSync(cmd, args); err != nil {
@@ -124,7 +117,7 @@ func runAgentSync(cmd *cobra.Command, args []string) error {
 			continue
 		}
 
-		path := config.ExpandPath(target.Path)
+		path := config.ExpandPath(target.GlobalPath)
 		if skills := collectSkillNames(path); skills != nil {
 			installedGlobal[targetName] = skills
 		}
@@ -143,7 +136,7 @@ func runAgentSync(cmd *cobra.Command, args []string) error {
 				continue
 			}
 
-			path := config.ExpandPath(target.Path)
+			path := config.ExpandPath(target.LocalPath)
 			if skills := collectSkillNames(path); skills != nil {
 				installedLocal[targetName] = skills
 			}
@@ -208,11 +201,11 @@ func runAgentSync(cmd *cobra.Command, args []string) error {
 	totalGlobalMissing := countMissing(missingGlobal)
 	totalLocalMissing := countMissing(missingLocal)
 	if checkFlag || dryRunFlag {
-		fmt.Printf("\n  [DRY-RUN] Would install %d global, %d local skill(s)\n", totalGlobalMissing, totalLocalMissing)
+		fmt.Printf("\n  [DRY-RUN] Would link %d global, %d local skill(s)\n", totalGlobalMissing, totalLocalMissing)
 		return nil
 	}
 
-	// Apply: install missing skills
+	// Apply: install missing skills (as symlinks)
 	installed := 0
 	failed := 0
 
@@ -227,8 +220,8 @@ func runAgentSync(cmd *cobra.Command, args []string) error {
 			continue
 		}
 
-		installPath := config.ExpandPath(target.Path)
-		installMissingSkills(targetName, "global", skills, globalCatalog, installPath, &installed, &failed)
+		installPath := config.ExpandPath(target.GlobalPath)
+		linkMissingSkills(targetName, "global", skills, globalCatalog, installPath, &installed, &failed)
 	}
 
 	// Install local missing skills to local targets (only if local config exists)
@@ -243,12 +236,12 @@ func runAgentSync(cmd *cobra.Command, args []string) error {
 				continue
 			}
 
-			installPath := config.ExpandPath(target.Path)
-			installMissingSkills(targetName, "local", skills, localCatalog, installPath, &installed, &failed)
+			installPath := config.ExpandPath(target.LocalPath)
+			linkMissingSkills(targetName, "local", skills, localCatalog, installPath, &installed, &failed)
 		}
 	}
 
-	fmt.Printf("\n  ✓ Agent sync complete: %d installed, %d failed\n", installed, failed)
+	fmt.Printf("\n  ✓ Agent sync complete: %d linked, %d failed\n", installed, failed)
 
 	return nil
 }
@@ -262,8 +255,8 @@ func countMissing(missingByTarget map[string][]string) int {
 	return total
 }
 
-// installMissingSkills installs missing skills to an agent's scope.
-func installMissingSkills(agentName, scope string, skillNames []string, catalog map[string]SkillInfo, installPath string, installed, failed *int) {
+// linkMissingSkills creates symlinks for missing skills in an agent's scope.
+func linkMissingSkills(agentName, scope string, skillNames []string, catalog map[string]SkillInfo, installPath string, installed, failed *int) {
 	for _, skillName := range skillNames {
 		skillInfo, exists := catalog[skillName]
 		if !exists {
@@ -273,25 +266,20 @@ func installMissingSkills(agentName, scope string, skillNames []string, catalog 
 		targetPath := filepath.Join(installPath, skillName)
 
 		// Check if already exists
-		if _, err := os.Stat(targetPath); err == nil {
+		if _, err := os.Lstat(targetPath); err == nil {
 			if verboseFlag {
 				fmt.Printf("    ! %s already exists in %s/%s, skipping\n", skillName, agentName, scope)
 			}
 			continue
 		}
 
-		fmt.Printf("    Installing %s to %s/%s...\n", skillName, agentName, scope)
+		fmt.Printf("    Linking %s to %s/%s...\n", skillName, agentName, scope)
 
-		// Build a minimal config for the skill installer
-		cfg := &config.Config{
-			Cache: config.CacheConfig{Path: skillInfo.Source},
-		}
-
-		if err := installSkillToPath(skillName, skillInfo, targetPath, cfg); err != nil {
-			fmt.Printf("      ! Failed to install %s: %v\n", skillName, err)
+		if err := repo.LinkSkill(skillInfo.Skill, targetPath); err != nil {
+			fmt.Printf("      ! Failed to link %s: %v\n", skillName, err)
 			*failed++
 		} else {
-			fmt.Printf("      ✓ %s installed\n", skillName)
+			fmt.Printf("      ✓ %s linked\n", skillName)
 			*installed++
 		}
 	}
@@ -299,9 +287,7 @@ func installMissingSkills(agentName, scope string, skillNames []string, catalog 
 
 // SkillInfo holds information about a skill from the catalog.
 type SkillInfo struct {
-	Source   string
-	Path     string
-	Commit   string
+	grimoire.Skill
 	RepoName string
 }
 
@@ -320,18 +306,14 @@ func buildSkillCatalog(cfg *config.Config) (map[string]SkillInfo, error) {
 			continue
 		}
 
-		commit, _ := cache.GetCommit(repoName)
-
 		for _, skill := range skills {
-			// Prefer skills from repos that have been synced (have commits)
-			if _, exists := catalog[skill.Name]; exists && commit == "" {
+			// Prefer first encountered skill (repos are ordered by priority)
+			if _, exists := catalog[skill.Name]; exists {
 				continue
 			}
 
 			catalog[skill.Name] = SkillInfo{
-				Source:   info.URL,
-				Path:     skill.Path,
-				Commit:   commit,
+				Skill:    skill,
 				RepoName: repoName,
 			}
 		}
@@ -357,7 +339,8 @@ func collectSkillNames(path string) map[string]bool {
 	}
 
 	for _, entry := range entries {
-		if entry.IsDir() {
+		// Count both directories and symlinks as skills
+		if entry.IsDir() || entry.Type()&os.ModeSymlink != 0 {
 			skills[entry.Name()] = true
 		}
 	}
@@ -392,28 +375,4 @@ func findMissingSkills(installedSkills map[string]map[string]bool, catalog map[s
 	}
 
 	return missingByTarget
-}
-
-// installSkillToPath installs a skill to a specific path.
-func installSkillToPath(skillName string, info SkillInfo, targetPath string, cfg *config.Config) error {
-	// Re-discover the skill to get the full Skill object
-	cache := repo.NewCache(config.ExpandPath(cfg.Cache.Path))
-	skills, err := repo.DiscoverSkills(cache.PathFor(info.RepoName), info.Source)
-	if err != nil {
-		return err
-	}
-
-	var targetSkill *grimoire.Skill
-	for i := range skills {
-		if skills[i].Name == skillName {
-			targetSkill = &skills[i]
-			break
-		}
-	}
-
-	if targetSkill == nil {
-		return fmt.Errorf("skill %q not found in catalog", skillName)
-	}
-
-	return repo.InstallSkill(*targetSkill, targetPath, info.Commit)
 }

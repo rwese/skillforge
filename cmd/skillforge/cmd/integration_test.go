@@ -328,8 +328,8 @@ enabled = true
 		t.Errorf("expected name 'pi', got %s", targets[0].Name)
 	}
 
-	if targets[0].Path != "/tmp/pi" {
-		t.Errorf("expected path '/tmp/pi', got %s", targets[0].Path)
+	if targets[0].GlobalPath != "" || targets[0].LocalPath != "/tmp/pi" {
+		t.Errorf("expected LocalPath '/tmp/pi', got GlobalPath=%s LocalPath=%s", targets[0].GlobalPath, targets[0].LocalPath)
 	}
 
 	if !targets[0].Enabled {

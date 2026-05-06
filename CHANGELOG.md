@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **Breaking**: Skills are now symlinked instead of copied
+  - No more `.grimoire` metadata files
+  - Skills always reference latest version from cached repos
+  - Removed `skill update` command (auto-updates on `sync`)
 - docs: slim down v2 scope (YAGNI - removed TUI, suggest, plugin system)
 
 ## [v1.1] - 2026-04-28

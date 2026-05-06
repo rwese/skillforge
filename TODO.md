@@ -1,55 +1,26 @@
-## Goal
+# Target Model Migration: GlobalPath/LocalPath
 
-Allow selective agent activation during `skillforge setup detect` instead of auto-configuring all detected agents.
+## Overview
+Migrate targets from single `Path` to dual `GlobalPath`/`LocalPath` model.
 
-## Status: Complete ✅
+## Tasks
 
-### Verified via tmux Testing
+- [x] 1. Update data model: rename `Path` → `LocalPath`, add `GlobalPath`
+- [x] 2. Update `target add` command: positional args `name globalPath localPath`
+- [x] 3. Update `target list` command: display both paths
+- [x] 4. Update `skill install/remove/list`: use correct path based on scope
+- [x] 5. Migrate global config: add `GlobalPath` to `pi`, remove `pi-local`
+- [x] 6. Add regression tests for new model
+- [x] 7. Update config TOML examples
+- [x] 8. Build and manual verification
+- [x] 9. Commit changes
 
-| Test | Status | Notes |
-|------|--------|-------|
-| `go build` | ✅ | |
-| `go test ./...` | ✅ | All 6 packages pass |
-| TUI renders | ✅ | Shows agent list with checkboxes |
-| Arrow keys | ✅ | Move cursor up/down |
-| Space | ✅ | Toggle selected item |
-| `n` key | ✅ | Deselect all |
-| `s` key | ✅ | Select all |
-| Enter | ✅ | Confirm selection |
-| Summary prompt | ✅ | Shows selected agents |
-| `y` confirm | ✅ | Saves to config |
-| `--yes` flag | ✅ | Skips interactive mode |
+## Acceptance Criteria
 
-## Commits
-
-| Commit | Description |
-|--------|-------------|
-| `579f57b` | feat(setup): add interactive agent selection |
-| `4afa957` | test(agents): add unit tests |
-| `de47aab` | fix(setup): skip interactive with --yes |
-| `472d22f` | docs: update TODO |
-| `43ad8b8` | fix(agents): handle \r and \n for Enter |
-| `be4e200` | docs: mark feature complete |
-| `8103fd2` | fix(tui): use raw terminal mode for tmux |
-
-## Usage
-
-```bash
-# Interactive mode
-skillforge setup detect
-
-# Non-interactive
-skillforge setup detect --yes
-```
-
-### Keyboard Controls
-
-| Key | Action |
-|-----|--------|
-| ↑/↓ | Navigate |
-| Space | Toggle |
-| a | Toggle all configured |
-| s | Select all |
-| n | Deselect all |
-| Enter | Confirm |
-| q | Quit |
+- [x] `target add pi ~/.pi/agent/skills .pi/skills` creates target with both paths
+- [x] `target list` shows globalPath and localPath columns
+- [x] `skill install tmux` installs to localPath from local config
+- [x] `skill install tmux -s global` installs to globalPath from global config
+- [x] Global config has `pi` with both paths set
+- [x] `pi-local` target removed from all configs
+- [x] All tests pass

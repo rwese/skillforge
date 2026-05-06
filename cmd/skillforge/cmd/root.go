@@ -69,6 +69,7 @@ var (
 	dryRunFlag  bool
 	yesFlag     bool
 	verboseFlag bool
+	enableFlag  bool
 )
 
 // rootLong returns the root command's long description with $0 replaced.
@@ -243,7 +244,7 @@ func init() {
 	})
 
 	// Global flags - available to all commands
-	rootCmd.PersistentFlags().StringVarP(&scopeFlag, "scope", "s", "local", "Config scope (global|local)")
+	rootCmd.PersistentFlags().StringVarP(&scopeFlag, "scope", "s", "", "Config scope (global|local|all)")
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "Config file path (default: ~/.config/skillforge/config.toml)")
 	rootCmd.PersistentFlags().BoolVarP(&dryRunFlag, "dry-run", "n", false, "Preview changes without applying")
 	rootCmd.PersistentFlags().BoolVarP(&yesFlag, "yes", "y", false, "Skip confirmations and use defaults")

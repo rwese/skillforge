@@ -99,7 +99,7 @@ func TestTarget_AddLocal(t *testing.T) {
 	env := newBaselineEnv(t)
 	env.chdir()
 
-	_, stderr, code := env.run("target", "add", "local-pi", "/tmp/skills", "-e", "--for-local")
+	_, stderr, code := env.run("target", "add", "local-pi", "/tmp/global", "/tmp/skills", "-e")
 	if code != 0 {
 		t.Fatalf("target add failed: %s", stderr)
 	}
@@ -111,16 +111,16 @@ func TestTarget_AddLocal(t *testing.T) {
 	}
 }
 
-func TestTarget_AddLocalRequiresScopeFlag(t *testing.T) {
+func TestTarget_AddRequiresAllArgs(t *testing.T) {
 	env := newBaselineEnv(t)
 	env.chdir()
 
 	_, stderr, code := env.run("target", "add", "test", "/tmp")
 	if code == 0 {
-		t.Fatal("expected error for missing scope flag")
+		t.Fatal("expected error for missing argument")
 	}
-	if !strings.Contains(stderr, "--for-local") && !strings.Contains(stderr, "--for-global") {
-		t.Errorf("expected scope flag error, got: %s", stderr)
+	if !strings.Contains(stderr, "expected 3 args") {
+		t.Errorf("expected argument count error, got: %s", stderr)
 	}
 }
 
@@ -129,7 +129,7 @@ func TestTarget_ListLocal(t *testing.T) {
 	env.chdir()
 
 	// Add a target
-	env.run("target", "add", "pi", "/tmp/pi", "-e", "--for-local")
+	env.run("target", "add", "pi", "/tmp/global", "/tmp/pi", "-e")
 
 	// List should show it
 	stdout, _, _ := env.run("target", "list", "-f", "json")
@@ -145,8 +145,8 @@ func TestTarget_ListLocal(t *testing.T) {
 	if targets[0].Name != "pi" {
 		t.Errorf("expected target 'pi', got %s", targets[0].Name)
 	}
-	if targets[0].Scope != "local" {
-		t.Errorf("expected scope 'local', got %s", targets[0].Scope)
+	if targets[0].GlobalPath != "" || targets[0].LocalPath == "" {
+		t.Errorf("expected LocalPath to be set, got GlobalPath=%s LocalPath=%s", targets[0].GlobalPath, targets[0].LocalPath)
 	}
 }
 
@@ -154,7 +154,7 @@ func TestTarget_EnableLocal(t *testing.T) {
 	env := newBaselineEnv(t)
 	env.chdir()
 
-	env.run("target", "add", "pi", "/tmp/pi", "--for-local")
+	env.run("target", "add", "pi", "/tmp/global", "/tmp/pi")
 	env.run("target", "enable", "pi")
 
 	stdout, _, _ := env.run("target", "list", "-f", "json")
@@ -167,7 +167,7 @@ func TestTarget_DisableLocal(t *testing.T) {
 	env := newBaselineEnv(t)
 	env.chdir()
 
-	env.run("target", "add", "pi", "/tmp/pi", "-e", "--for-local")
+	env.run("target", "add", "pi", "/tmp/global", "/tmp/pi", "-e")
 	env.run("target", "disable", "pi")
 
 	stdout, _, _ := env.run("target", "list", "-f", "json")
@@ -180,7 +180,7 @@ func TestTarget_RemoveLocal(t *testing.T) {
 	env := newBaselineEnv(t)
 	env.chdir()
 
-	env.run("target", "add", "pi", "/tmp/pi", "-e", "--for-local")
+	env.run("target", "add", "pi", "/tmp/global", "/tmp/pi", "-e")
 	env.run("target", "remove", "pi", "--yes")
 
 	stdout, _, _ := env.run("target", "list", "-f", "json")
@@ -210,7 +210,7 @@ func TestTarget_AddGlobal(t *testing.T) {
 	env := newBaselineEnv(t)
 	env.chdir()
 
-	_, stderr, code := env.run("target", "add", "global-pi", "/tmp/global", "-e", "--for-global")
+	_, stderr, code := env.run("target", "add", "global-pi", "/tmp/global", "/tmp/local", "-e")
 	if code != 0 {
 		t.Fatalf("target add failed: %s", stderr)
 	}
@@ -230,8 +230,8 @@ func TestTarget_AddDuplicate(t *testing.T) {
 	env := newBaselineEnv(t)
 	env.chdir()
 
-	env.run("target", "add", "pi", "/tmp/pi", "-e", "--for-local")
-	_, stderr, code := env.run("target", "add", "pi", "/tmp/other", "--for-local")
+	env.run("target", "add", "pi", "/tmp/global", "/tmp/pi", "-e")
+	_, stderr, code := env.run("target", "add", "pi", "/tmp/other/global", "/tmp/other")
 
 	if code == 0 {
 		t.Fatal("expected error for duplicate")
@@ -326,10 +326,10 @@ func TestScope_LocalDoesNotSeeGlobal(t *testing.T) {
 	env.chdir()
 
 	// Add global target
-	env.run("target", "add", "global-pi", "/tmp/global", "-e", "--for-global")
+	env.run("target", "add", "global-pi", "/tmp/global", "/tmp/local", "-e", "-s", "global")
 
 	// Add local target with different name
-	env.run("target", "add", "local-pi", "/tmp/local", "-e", "--for-local")
+	env.run("target", "add", "local-pi", "/tmp/global/local", "/tmp/local", "-e", "-s", "local")
 
 	// List should only show local
 	stdout, _, _ := env.run("target", "list", "-f", "json")
@@ -351,10 +351,10 @@ func TestScope_GlobalDoesNotSeeLocal(t *testing.T) {
 	env.chdir()
 
 	// Add local target
-	env.run("target", "add", "local-pi", "/tmp/local", "-e", "--for-local")
+	env.run("target", "add", "local-pi", "/tmp/global", "/tmp/local", "-e", "-s", "local")
 
 	// Add global target with different name
-	env.run("target", "add", "global-pi", "/tmp/global", "-e", "--for-global")
+	env.run("target", "add", "global-pi", "/tmp/global", "/tmp/local", "-e", "-s", "global")
 
 	// List with global scope
 	stdout, _, _ := env.run("target", "list", "-s", "global", "-f", "json")
