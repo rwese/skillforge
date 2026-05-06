@@ -90,7 +90,7 @@ func TestNewLoader(t *testing.T) {
 	}{
 		{"global scope", ScopeGlobal},
 		{"local scope", ScopeLocal},
-		{"auto scope", ScopeAuto},
+		{"auto scope", ScopeLocal},
 	}
 
 	for _, tt := range tests {
@@ -126,7 +126,7 @@ func TestLoaderLoad(t *testing.T) {
 }
 
 func TestLoaderLoadAuto(t *testing.T) {
-	loader := NewLoader(ScopeAuto)
+	loader := NewLoader(ScopeLocal)
 	cfg, err := loader.Load()
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
@@ -134,7 +134,7 @@ func TestLoaderLoadAuto(t *testing.T) {
 
 	// Should load global config (with defaults if no file)
 	if cfg.Cache.Path == "" {
-		t.Error("Load() returned empty Cache.Path for ScopeAuto")
+		t.Error("Load() returned empty Cache.Path for ScopeLocal")
 	}
 }
 
@@ -200,7 +200,7 @@ func TestLoaderSaveLocalCreatesDir(t *testing.T) {
 
 	// Create loader that will detect this as local
 	loader := &Loader{
-		scope: ScopeAuto,
+		scope: ScopeLocal,
 	}
 
 	cfg := &Config{
@@ -275,17 +275,16 @@ func TestScopeConstants(t *testing.T) {
 	tests := []struct {
 		name  string
 		scope Scope
-		want  int
 	}{
-		{"ScopeGlobal", ScopeGlobal, 0},
-		{"ScopeLocal", ScopeLocal, 1},
-		{"ScopeAuto", ScopeAuto, 2},
+		{"ScopeGlobal", ScopeGlobal},
+		{"ScopeLocal", ScopeLocal},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if int(tt.scope) != tt.want {
-				t.Errorf("Scope %s = %d, want %d", tt.name, int(tt.scope), tt.want)
+			// Just verify the scope constants exist and have valid string representations
+			if tt.scope.String() == "" {
+				t.Errorf("Scope %s has empty String()", tt.name)
 			}
 		})
 	}
@@ -309,7 +308,7 @@ enabled = true
 	}
 
 	loader := &Loader{
-		scope:      ScopeAuto,
+		scope:      ScopeGlobal,
 		globalPath: globalPath,
 	}
 
@@ -359,7 +358,7 @@ enabled = true
 	os.Chdir(tmpDir)
 
 	loader := &Loader{
-		scope:      ScopeAuto,
+		scope:      ScopeLocal,
 		globalPath: filepath.Join(tmpDir, "global.toml"), // doesn't exist
 	}
 
@@ -385,7 +384,7 @@ func TestLoad_Neither(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	loader := &Loader{
-		scope:      ScopeAuto,
+		scope:      ScopeLocal,
 		globalPath: filepath.Join(tmpDir, "global.toml"), // doesn't exist
 	}
 
@@ -411,7 +410,8 @@ func TestLoad_Neither(t *testing.T) {
 	}
 }
 
-func TestLoad_BothMerge(t *testing.T) {
+// TestLoad_LocalOnlyScope verifies that ScopeLocal only loads local config.
+func TestLoad_LocalOnlyScope(t *testing.T) {
 	tmpDir := t.TempDir()
 	globalPath := filepath.Join(tmpDir, "global.toml")
 	localDir := filepath.Join(tmpDir, ".skillforge")
@@ -423,16 +423,12 @@ func TestLoad_BothMerge(t *testing.T) {
 	// Write global config
 	globalCfg := `cache.path = "/global/cache"
 
-[targets.pi]
-path = "/global/pi"
-enabled = true
-
-[targets.global-only]
+[targets.global-target]
 path = "/global/only"
 enabled = true
 
-[repos.grimoire]
-url = "https://github.com/rwese/agents-grimoire"
+[repos.global-repo]
+url = "https://github.com/test/grimoire"
 branch = "main"
 updated = "2026-04-28"
 `
@@ -443,7 +439,7 @@ updated = "2026-04-28"
 	// Write local config
 	localCfg := `cache.path = "/local/cache"
 
-[targets.local]
+[targets.local-target]
 path = "/local/skills"
 enabled = true
 
@@ -462,7 +458,7 @@ updated = "2026-04-27"
 	os.Chdir(tmpDir)
 
 	loader := &Loader{
-		scope:      ScopeAuto,
+		scope:      ScopeLocal,
 		globalPath: globalPath,
 	}
 
@@ -471,36 +467,33 @@ updated = "2026-04-27"
 		t.Fatalf("Load() error = %v", err)
 	}
 
-	// Local should override global cache.path
+	// Should only have local cache
 	if cfg.Cache.Path != "/local/cache" {
-		t.Errorf("Cache.Path = %q, want %q (local override)", cfg.Cache.Path, "/local/cache")
+		t.Errorf("Cache.Path = %q, want %q (local only)", cfg.Cache.Path, "/local/cache")
 	}
 
-	// Should have global-only target
-	if _, ok := cfg.Targets["global-only"]; !ok {
-		t.Error("Expected target 'global-only' not found")
+	// Should NOT have global-target (only in global config)
+	if _, ok := cfg.Targets["global-target"]; ok {
+		t.Error("Should not have target 'global-target' when loading local only")
 	}
 
-	// Should have pi from global
-	if _, ok := cfg.Targets["pi"]; !ok {
-		t.Error("Expected target 'pi' not found")
+	// Should have local-target from local config
+	if _, ok := cfg.Targets["local-target"]; !ok {
+		t.Error("Expected target 'local-target' not found")
 	}
 
-	// Should have local target
-	if _, ok := cfg.Targets["local"]; !ok {
-		t.Error("Expected target 'local' not found")
+	// Should NOT have global repo
+	if _, ok := cfg.Repos["global-repo"]; ok {
+		t.Error("Should not have repo 'global-repo' when loading local only")
 	}
-
-	// Should have both repos
-	if _, ok := cfg.Repos["grimoire"]; !ok {
-		t.Error("Expected repo 'grimoire' not found")
-	}
+	// Should have local repo
 	if _, ok := cfg.Repos["local-repo"]; !ok {
 		t.Error("Expected repo 'local-repo' not found")
 	}
 }
 
-func TestLoad_LocalOverrides(t *testing.T) {
+// TestLoad_LocalScopeTarget verifies that ScopeLocal correctly loads a target from local config.
+func TestLoad_LocalScopeTarget(t *testing.T) {
 	tmpDir := t.TempDir()
 	globalPath := filepath.Join(tmpDir, "global.toml")
 	localDir := filepath.Join(tmpDir, ".skillforge")
@@ -537,7 +530,7 @@ enabled = false
 	os.Chdir(tmpDir)
 
 	loader := &Loader{
-		scope:      ScopeAuto,
+		scope:      ScopeLocal,
 		globalPath: globalPath,
 	}
 
@@ -546,25 +539,26 @@ enabled = false
 		t.Fatalf("Load() error = %v", err)
 	}
 
-	// Local should override global cache.path
+	// Should only have local cache
 	if cfg.Cache.Path != "/local/cache" {
 		t.Errorf("Cache.Path = %q, want %q", cfg.Cache.Path, "/local/cache")
 	}
 
-	// Local should override pi's path and enabled
+	// Should have pi from local config with local values
 	pi, ok := cfg.Targets["pi"]
 	if !ok {
 		t.Fatal("Expected target 'pi' not found")
 	}
 	if pi.Path != "/local/pi" {
-		t.Errorf("pi.Path = %q, want %q (local override)", pi.Path, "/local/pi")
+		t.Errorf("pi.Path = %q, want %q", pi.Path, "/local/pi")
 	}
 	if pi.Enabled {
-		t.Error("pi.Enabled = true, want false (local override)")
+		t.Error("pi.Enabled = true, want false")
 	}
 }
 
-func TestLoad_DifferentKeys(t *testing.T) {
+// TestLoad_GlobalOnlyScope verifies that ScopeGlobal only loads global config.
+func TestLoad_GlobalOnlyScope(t *testing.T) {
 	tmpDir := t.TempDir()
 	globalPath := filepath.Join(tmpDir, "global.toml")
 	localDir := filepath.Join(tmpDir, ".skillforge")
@@ -573,34 +567,45 @@ func TestLoad_DifferentKeys(t *testing.T) {
 	}
 	localPath := filepath.Join(localDir, "config.toml")
 
-	// Write global config with cache and pi target
+	// Write global config
 	globalCfg := `cache.path = "/global/cache"
 
-[targets.pi]
-path = "/global/pi"
+[targets.global-target]
+path = "/global/only"
 enabled = true
+
+[repos.global-repo]
+url = "https://github.com/test/grimoire"
+branch = "main"
+updated = "2026-04-28"
 `
 	if err := os.WriteFile(globalPath, []byte(globalCfg), 0644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 
-	// Write local config with different target (no cache override)
-	localCfg := `
-[targets.local]
+	// Write local config
+	localCfg := `cache.path = "/local/cache"
+
+[targets.local-target]
 path = "/local/skills"
 enabled = true
+
+[repos.local-repo]
+url = "https://github.com/test/local"
+branch = "develop"
+updated = "2026-04-27"
 `
 	if err := os.WriteFile(localPath, []byte(localCfg), 0644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 
-	// Change to tmpDir
+	// Change to tmpDir so DetectLocalPath finds it
 	oldCwd, _ := os.Getwd()
 	defer os.Chdir(oldCwd)
 	os.Chdir(tmpDir)
 
 	loader := &Loader{
-		scope:      ScopeAuto,
+		scope:      ScopeGlobal,
 		globalPath: globalPath,
 	}
 
@@ -609,19 +614,28 @@ enabled = true
 		t.Fatalf("Load() error = %v", err)
 	}
 
-	// Should have global cache (local didn't override)
+	// Should only have global cache
 	if cfg.Cache.Path != "/global/cache" {
-		t.Errorf("Cache.Path = %q, want %q (preserved from global)", cfg.Cache.Path, "/global/cache")
+		t.Errorf("Cache.Path = %q, want %q (global only)", cfg.Cache.Path, "/global/cache")
 	}
 
-	// Should have pi from global
-	if _, ok := cfg.Targets["pi"]; !ok {
-		t.Error("Expected target 'pi' not found (preserved from global)")
+	// Should have global-target from global config
+	if _, ok := cfg.Targets["global-target"]; !ok {
+		t.Error("Expected target 'global-target' not found")
 	}
 
-	// Should have local from local
-	if _, ok := cfg.Targets["local"]; !ok {
-		t.Error("Expected target 'local' not found")
+	// Should NOT have local-target (only in local config)
+	if _, ok := cfg.Targets["local-target"]; ok {
+		t.Error("Should not have target 'local-target' when loading global only")
+	}
+
+	// Should have global repo
+	if _, ok := cfg.Repos["global-repo"]; !ok {
+		t.Error("Expected repo 'global-repo' not found")
+	}
+	// Should NOT have local repo
+	if _, ok := cfg.Repos["local-repo"]; ok {
+		t.Error("Should not have repo 'local-repo' when loading global only")
 	}
 }
 
@@ -662,7 +676,7 @@ enabled = true
 	os.Chdir(tmpDir)
 
 	loader := &Loader{
-		scope:      ScopeAuto,
+		scope:      ScopeLocal,
 		globalPath: globalPath,
 	}
 

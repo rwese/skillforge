@@ -59,14 +59,14 @@ func runSkillInstall(cmd *cobra.Command, args []string) error {
 	}
 
 	// Always load all repos (global + local) for skill discovery since cache is global
-	allRepos, allCache, err := config.NewLoader(config.ScopeAuto).LoadAllRepos()
+	allRepos, allCache, err := config.NewLoader(config.ScopeLocal).LoadAllRepos()
 	if err != nil {
 		return fmt.Errorf("loading repos: %w", err)
 	}
 
 	cache := repo.NewCache(config.ExpandPath(allCache.Path))
 
-	// Determine paths to install to (uses scoped config)
+	// Determine paths to install to (default is local scope)
 	installPaths, err := getInstallPaths(targetFlag, scopeFlag)
 	if err != nil {
 		return err
@@ -174,7 +174,7 @@ type InstallPath struct {
 }
 
 // getInstallPaths returns paths to install skills to based on target and scope flags.
-// When no specific target is given, ALL enabled targets are included (scope only affects where config is saved).
+// Default is local scope. Use -s global for global targets only.
 func getInstallPaths(targetName, scope string) ([]InstallPath, error) {
 	globalCfg, err := loadConfigScope(config.ScopeGlobal)
 	if err != nil {
@@ -186,13 +186,17 @@ func getInstallPaths(targetName, scope string) ([]InstallPath, error) {
 
 	var paths []InstallPath
 
+	// Determine which scopes to include
+	includeGlobal := scope == "global"
+	includeLocal := scope == "local" || scope == "" // Default to local
+
 	if targetName != "" {
-		// Specific target - check both global and local
+		// Specific target - check if it matches the requested scope
 		found := false
 
 		// Check global targets
-		if target, ok := globalCfg.Targets[targetName]; ok && target.Enabled {
-			if shouldUseScope(scope, "global") {
+		if includeGlobal {
+			if target, ok := globalCfg.Targets[targetName]; ok && target.Enabled {
 				paths = append(paths, InstallPath{
 					Path:  config.ExpandPath(target.Path),
 					Label: fmt.Sprintf("%s (global)", targetName),
@@ -202,58 +206,42 @@ func getInstallPaths(targetName, scope string) ([]InstallPath, error) {
 		}
 
 		// Check local targets
-		if localConfigExists && localCfg != nil {
+		if includeLocal && localConfigExists && localCfg != nil {
 			if target, ok := localCfg.Targets[targetName]; ok && target.Enabled {
-				if shouldUseScope(scope, "local") {
-					paths = append(paths, InstallPath{
-						Path:  config.ExpandPath(target.Path),
-						Label: fmt.Sprintf("%s (local)", targetName),
-					})
-					found = true
-				}
+				paths = append(paths, InstallPath{
+					Path:  config.ExpandPath(target.Path),
+					Label: fmt.Sprintf("%s (local)", targetName),
+				})
+				found = true
 			}
 		}
 
 		if !found {
-			return nil, fmt.Errorf("target %q not found or not enabled", targetName)
+			return nil, fmt.Errorf("target %q not found or not enabled for scope %q", targetName, scope)
 		}
 	} else {
-		// All enabled targets (from both global and local configs)
-		// Scope only affects where config is saved, not which targets are available
-		for name, target := range globalCfg.Targets {
-			if !target.Enabled {
-				continue
+		// All enabled targets filtered by scope
+		if includeGlobal {
+			for name, target := range globalCfg.Targets {
+				if !target.Enabled {
+					continue
+				}
+				paths = append(paths, InstallPath{
+					Path:  config.ExpandPath(target.Path),
+					Label: fmt.Sprintf("%s (global)", name),
+				})
 			}
-			paths = append(paths, InstallPath{
-				Path:  config.ExpandPath(target.Path),
-				Label: fmt.Sprintf("%s (global)", name),
-			})
 		}
 
-		// Local targets override global targets with the same name
-		if localConfigExists && localCfg != nil {
+		if includeLocal && localConfigExists && localCfg != nil {
 			for name, target := range localCfg.Targets {
 				if !target.Enabled {
 					continue
 				}
-				// Check if this target exists globally (it will be overridden)
-				if _, existsGlobally := globalCfg.Targets[name]; existsGlobally {
-					// Replace the global path with local path
-					for i := range paths {
-						if paths[i].Label == fmt.Sprintf("%s (global)", name) {
-							paths[i] = InstallPath{
-								Path:  config.ExpandPath(target.Path),
-								Label: fmt.Sprintf("%s (local override)", name),
-							}
-							break
-						}
-					}
-				} else {
-					paths = append(paths, InstallPath{
-						Path:  config.ExpandPath(target.Path),
-						Label: fmt.Sprintf("%s (local)", name),
-					})
-				}
+				paths = append(paths, InstallPath{
+					Path:  config.ExpandPath(target.Path),
+					Label: fmt.Sprintf("%s (local)", name),
+				})
 			}
 		}
 	}
@@ -268,7 +256,7 @@ func shouldUseScope(scopeFlag, scopeValue string) bool {
 		return scopeValue == "global"
 	case "local":
 		return scopeValue == "local"
-	default: // auto
+	default:
 		return true
 	}
 }
@@ -457,10 +445,14 @@ func getRemovePaths(targetName, scope string) []RemovePath {
 
 	var paths []RemovePath
 
+	// Determine which scopes to include
+	includeGlobal := scope == "global"
+	includeLocal := scope != "global" // Default to local if not global
+
 	if targetName != "" {
 		// Specific target
-		if target, ok := globalCfg.Targets[targetName]; ok && target.Enabled {
-			if shouldUseScope(scope, "global") {
+		if includeGlobal {
+			if target, ok := globalCfg.Targets[targetName]; ok && target.Enabled {
 				paths = append(paths, RemovePath{
 					Path:  config.ExpandPath(target.Path),
 					Label: fmt.Sprintf("%s (global)", targetName),
@@ -468,53 +460,37 @@ func getRemovePaths(targetName, scope string) []RemovePath {
 			}
 		}
 
-		if localConfigExists && localCfg != nil {
+		if includeLocal && localConfigExists && localCfg != nil {
 			if target, ok := localCfg.Targets[targetName]; ok && target.Enabled {
-				if shouldUseScope(scope, "local") {
-					paths = append(paths, RemovePath{
-						Path:  config.ExpandPath(target.Path),
-						Label: fmt.Sprintf("%s (local)", targetName),
-					})
-				}
+				paths = append(paths, RemovePath{
+					Path:  config.ExpandPath(target.Path),
+					Label: fmt.Sprintf("%s (local)", targetName),
+				})
 			}
 		}
 	} else {
-		// All enabled targets (from both global and local configs)
-		// Scope only affects where config is saved, not which targets are available
-		for name, target := range globalCfg.Targets {
-			if !target.Enabled {
-				continue
+		// All enabled targets filtered by scope
+		if includeGlobal {
+			for name, target := range globalCfg.Targets {
+				if !target.Enabled {
+					continue
+				}
+				paths = append(paths, RemovePath{
+					Path:  config.ExpandPath(target.Path),
+					Label: fmt.Sprintf("%s (global)", name),
+				})
 			}
-			paths = append(paths, RemovePath{
-				Path:  config.ExpandPath(target.Path),
-				Label: fmt.Sprintf("%s (global)", name),
-			})
 		}
 
-		// Local targets override global targets with the same name
-		if localConfigExists && localCfg != nil {
+		if includeLocal && localConfigExists && localCfg != nil {
 			for name, target := range localCfg.Targets {
 				if !target.Enabled {
 					continue
 				}
-				// Check if this target exists globally (it will be overridden)
-				if _, existsGlobally := globalCfg.Targets[name]; existsGlobally {
-					// Replace the global path with local path
-					for i := range paths {
-						if paths[i].Label == fmt.Sprintf("%s (global)", name) {
-							paths[i] = RemovePath{
-								Path:  config.ExpandPath(target.Path),
-								Label: fmt.Sprintf("%s (local override)", name),
-							}
-							break
-						}
-					}
-				} else {
-					paths = append(paths, RemovePath{
-						Path:  config.ExpandPath(target.Path),
-						Label: fmt.Sprintf("%s (local)", name),
-					})
-				}
+				paths = append(paths, RemovePath{
+					Path:  config.ExpandPath(target.Path),
+					Label: fmt.Sprintf("%s (local)", name),
+				})
 			}
 		}
 	}

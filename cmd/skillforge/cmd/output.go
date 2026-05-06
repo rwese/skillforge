@@ -71,6 +71,7 @@ type TargetOutput struct {
 	Name    string `json:"name"`
 	Path    string `json:"path"`
 	Enabled bool   `json:"enabled"`
+	Scope   string `json:"scope"` // "local" or "global"
 }
 
 // --- Skill Output Types ---
@@ -130,6 +131,7 @@ func formatTargetTable(targets []TargetOutput) string {
 	// Calculate column widths
 	nameWidth := 10
 	pathWidth := 20
+	scopeWidth := 10
 	for _, t := range targets {
 		if len(t.Name) > nameWidth {
 			nameWidth = len(t.Name)
@@ -138,12 +140,16 @@ func formatTargetTable(targets []TargetOutput) string {
 		if len(contracted) > pathWidth {
 			pathWidth = len(contracted)
 		}
+		if len(t.Scope) > scopeWidth {
+			scopeWidth = len(t.Scope)
+		}
 	}
 
 	// Print header
-	header := fmt.Sprintf("%-*s  %-*s  %s",
+	header := fmt.Sprintf("%-*s  %-*s  %-*s  %s",
 		nameWidth, "TARGET",
 		pathWidth, "PATH",
+		scopeWidth, "SCOPE",
 		"STATUS")
 	b.WriteString(header)
 	b.WriteString("\n")
@@ -151,6 +157,7 @@ func formatTargetTable(targets []TargetOutput) string {
 	// Print separator
 	sep := strings.Repeat("─", nameWidth) + "  " +
 		strings.Repeat("─", pathWidth) + "  " +
+		strings.Repeat("─", scopeWidth) + "  " +
 		"───────"
 	b.WriteString(sep)
 	b.WriteString("\n")
@@ -158,6 +165,7 @@ func formatTargetTable(targets []TargetOutput) string {
 	// Print rows
 	for _, t := range targets {
 		path := config.ContractPath(t.Path)
+		scope := t.Scope
 		status := "disabled"
 		statusColor := Error
 		if t.Enabled {
@@ -165,12 +173,19 @@ func formatTargetTable(targets []TargetOutput) string {
 			statusColor = Success
 		}
 
-		row := fmt.Sprintf("%-*s  %-*s  %s",
+		scopeColor := lipgloss.NewStyle().Foreground(lipgloss.Color("#3498DB"))
+		row := fmt.Sprintf("%-*s  %-*s  %-*s  %s",
 			nameWidth, t.Name,
 			pathWidth, path,
+			scopeWidth, scope,
 			status)
 		if UseColors() {
-			b.WriteString(row[:len(row)-len(status)])
+			// Find position of scope to colorize
+			scopeStart := nameWidth + 2 + pathWidth + 2
+			scopeEnd := scopeStart + scopeWidth
+			b.WriteString(row[:scopeStart])
+			b.WriteString(scopeColor.Render(scope))
+			b.WriteString(row[scopeEnd:len(row)-len(status)])
 			b.WriteString(statusColor.Render(status))
 			b.WriteString("\n")
 		} else {

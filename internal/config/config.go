@@ -22,11 +22,28 @@ type CacheConfig struct {
 	Path string `toml:"path"`
 }
 
+// TargetScope defines where a target is valid.
+type TargetScope int
+
+const (
+	TargetScopeLocal TargetScope = iota
+	TargetScopeGlobal
+)
+
+// String returns the string representation of a TargetScope.
+func (s TargetScope) String() string {
+	if s == TargetScopeLocal {
+		return "local"
+	}
+	return "global"
+}
+
 // Target defines an agent skill directory target.
 type Target struct {
-	Name    string
-	Path    string `toml:"path"`
-	Enabled bool   `toml:"enabled"`
+	Name    string      `toml:"name"`
+	Path    string      `toml:"path"`
+	Enabled bool        `toml:"enabled"`
+	Scope   TargetScope `toml:"scope"` // TargetScopeLocal or TargetScopeGlobal
 }
 
 // RepoInfo tracks a cached repository.
@@ -41,23 +58,21 @@ type RepoInfo struct {
 type Scope int
 
 const (
-	ScopeGlobal Scope = iota
-	ScopeLocal
-	ScopeAuto
+	ScopeLocal Scope = iota
+	ScopeGlobal
 )
 
 // String returns the string representation of a Scope.
 func (s Scope) String() string {
-	switch s {
-	case ScopeGlobal:
+	if s == ScopeGlobal {
 		return "global"
-	case ScopeLocal:
-		return "local"
-	case ScopeAuto:
-		return "auto"
-	default:
-		return "unknown"
 	}
+	return "local"
+}
+
+// IsLocal returns true if this is a local scope.
+func (s Scope) IsLocal() bool {
+	return s == ScopeLocal
 }
 
 // Loader handles configuration loading with scope detection.
@@ -129,21 +144,13 @@ func (l *Loader) Load() (*Config, error) {
 		if err := l.loadFile(l.globalPath, cfg); err != nil {
 			return nil, err
 		}
-	case ScopeLocal:
+	default: // ScopeLocal
 		localPath := DetectLocalPath()
 		if localPath == "" {
 			return cfg, nil
 		}
 		if err := l.loadFile(localPath, cfg); err != nil {
 			return nil, err
-		}
-	case ScopeAuto:
-		// Load global first, then local overrides
-		_ = l.loadFile(l.globalPath, cfg)
-
-		localPath := DetectLocalPath()
-		if localPath != "" {
-			_ = l.loadFile(localPath, cfg)
 		}
 	}
 

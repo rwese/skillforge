@@ -14,7 +14,11 @@ var targetCmd = &cobra.Command{
 	Short: "Manage skill targets",
 	Long: `Manage skill targets (agent skill directories).
 
-Targets define where skills are installed. Each target has a path and enabled status.`,
+Targets define where skills are installed. Each target has:
+  - name: unique identifier
+  - path: directory path for skills
+  - scope: local, global, or both (where the target is usable)
+  - enabled: whether the target receives skill installations`,
 }
 
 func init() {
@@ -41,10 +45,17 @@ func runTargetList(cmd *cobra.Command, args []string) error {
 	// Collect targets
 	var targets []TargetOutput
 	for name, target := range cfg.Targets {
+		scopeStr := "both"
+		if target.Scope == config.TargetScopeLocal {
+			scopeStr = "local"
+		} else if target.Scope == config.TargetScopeGlobal {
+			scopeStr = "global"
+		}
 		targets = append(targets, TargetOutput{
 			Name:    name,
 			Path:    target.Path,
 			Enabled: target.Enabled,
+			Scope:   scopeStr,
 		})
 	}
 
@@ -87,9 +98,13 @@ var targetAddCmd = &cobra.Command{
 }
 
 var enableFlag bool
+var forLocalFlag bool
+var forGlobalFlag bool
 
 func init() {
 	targetAddCmd.Flags().BoolVarP(&enableFlag, "enable", "e", false, "Enable target after creation")
+	targetAddCmd.Flags().BoolVar(&forLocalFlag, "for-local", false, "Target is for local scope only")
+	targetAddCmd.Flags().BoolVar(&forGlobalFlag, "for-global", false, "Target is for global scope only")
 }
 
 func runTargetAdd(cmd *cobra.Command, args []string) error {
@@ -106,9 +121,23 @@ func runTargetAdd(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("target %q already exists", name)
 	}
 
+	// Determine target scope
+	if forLocalFlag && forGlobalFlag {
+		return fmt.Errorf("cannot specify both --for-local and --for-global")
+	}
+	if !forLocalFlag && !forGlobalFlag {
+		return fmt.Errorf("must specify either --for-local or --for-global")
+	}
+
+	targetScope := config.TargetScopeLocal
+	if forGlobalFlag {
+		targetScope = config.TargetScopeGlobal
+	}
+
 	cfg.Targets[name] = config.Target{
 		Path:    path,
 		Enabled: enableFlag,
+		Scope:   targetScope,
 	}
 
 	if err := saveConfig(cfg); err != nil {
@@ -120,10 +149,11 @@ func runTargetAdd(cmd *cobra.Command, args []string) error {
 			Name:    name,
 			Path:    path,
 			Enabled: enableFlag,
+			Scope:   targetScope.String(),
 		})
 	}
 
-	fmt.Printf("✓ Added target %s\n", name)
+	fmt.Printf("✓ Added target %s (scope: %s)\n", name, targetScope.String())
 	return nil
 }
 
@@ -309,19 +339,15 @@ func loadConfig() (*config.Config, error) {
 
 // parseScope converts scope string to config.Scope.
 func parseScope(s string) config.Scope {
-	switch s {
-	case "global":
+	if s == "global" {
 		return config.ScopeGlobal
-	case "local":
-		return config.ScopeLocal
-	default:
-		return config.ScopeAuto
 	}
+	return config.ScopeLocal
 }
 
 func saveConfig(cfg *config.Config) error {
 	scope := parseScope(scopeFlag)
-	local := scope == config.ScopeLocal || (scope == config.ScopeAuto && config.DetectLocalPath() != "")
+	local := scope == config.ScopeLocal
 
 	loader := config.NewLoader(scope)
 	return loader.Save(cfg, local)

@@ -36,7 +36,7 @@ func init() {
 	rootCmd.AddCommand(syncCmd)
 	syncCmd.Flags().BoolVarP(&checkFlag, "check", "c", false, "Check for updates without applying")
 	syncCmd.Flags().StringVarP(&syncAgentFlag, "agent", "a", "", "Sync only specific agent (pi, codex, claude)")
-	syncCmd.Flags().StringVarP(&syncScopeFlag, "scope", "s", "auto", "Scope: global, local, or auto")
+	syncCmd.Flags().StringVarP(&syncScopeFlag, "scope", "s", "local", "Scope: global or local")
 	syncCmd.Flags().BoolVarP(&skipAgentSyncFlag, "skip-agent-sync", "", false, "Skip agent synchronization step")
 }
 
