@@ -2,8 +2,6 @@ package cmd
 
 import (
 	"testing"
-
-	"github.com/rwese/skillforge/internal/agents"
 )
 
 // TestCollectSkillNames tests skill name collection from directories.
@@ -121,62 +119,6 @@ func TestFindMissingSkills(t *testing.T) {
 						t.Errorf("target %s: unexpected missing skill %s", target, s)
 					}
 				}
-			}
-		})
-	}
-}
-
-// TestParseTarget tests target string parsing.
-func TestParseTarget(t *testing.T) {
-	tests := []struct {
-		target    string
-		wantAgent string
-		wantScope string
-	}{
-		{"pi/global", "pi", "global"},
-		{"codex/local", "codex", "local"},
-		{"claude/global", "claude", "global"},
-		{"single", "single", ""},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.target, func(t *testing.T) {
-			agent, scope := parseTarget(tt.target)
-			if agent != tt.wantAgent {
-				t.Errorf("parseTarget(%q) agent = %q, want %q", tt.target, agent, tt.wantAgent)
-			}
-			if scope != tt.wantScope {
-				t.Errorf("parseTarget(%q) scope = %q, want %q", tt.target, scope, tt.wantScope)
-			}
-		})
-	}
-}
-
-// TestShouldSyncScope tests scope filtering.
-func TestShouldSyncScope(t *testing.T) {
-	path := &agents.Path{Value: "/some/path"}
-
-	tests := []struct {
-		name       string
-		path       *agents.Path
-		scopeFlag  string
-		scopeValue string
-		want       bool
-	}{
-		{"nil path returns false", nil, "auto", "global", false},
-		{"global scope matches", path, "global", "global", true},
-		{"global scope doesn't match local", path, "global", "local", false},
-		{"local scope matches", path, "local", "local", true},
-		{"local scope doesn't match global", path, "local", "global", false},
-		{"auto scope matches global", path, "auto", "global", true},
-		{"auto scope matches local", path, "auto", "local", true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := shouldSyncScope(tt.path, tt.scopeFlag, tt.scopeValue)
-			if got != tt.want {
-				t.Errorf("shouldSyncScope() = %v, want %v", got, tt.want)
 			}
 		})
 	}

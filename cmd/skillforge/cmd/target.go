@@ -178,13 +178,32 @@ var targetEnableCmd = &cobra.Command{
 
 func runTargetEnable(cmd *cobra.Command, args []string) error {
 	name := args[0]
+	scope := parseScope(scopeFlag)
 
+	// Load config based on scope
 	cfg, err := loadConfig()
 	if err != nil {
 		return err
 	}
 
+	// Check if target exists in loaded config
 	target, exists := cfg.Targets[name]
+
+	// If enabling locally and target not in local config, check global
+	if scope == config.ScopeLocal && !exists {
+		// Load global config to find the target
+		globalLoader := config.NewLoader(config.ScopeGlobal)
+		globalCfg, err := globalLoader.Load()
+		if err == nil {
+			if globalTarget, globalExists := globalCfg.Targets[name]; globalExists {
+				target = globalTarget
+				exists = true
+				// Will create local entry with global path and local enabled status
+				fmt.Printf("→ Creating local override for target %q (defined globally)\n", name)
+			}
+		}
+	}
+
 	if !exists {
 		PrintHint(HintTargetNotFound)
 		return fmt.Errorf("target %q not found", name)
@@ -218,13 +237,32 @@ var targetDisableCmd = &cobra.Command{
 
 func runTargetDisable(cmd *cobra.Command, args []string) error {
 	name := args[0]
+	scope := parseScope(scopeFlag)
 
+	// Load config based on scope
 	cfg, err := loadConfig()
 	if err != nil {
 		return err
 	}
 
+	// Check if target exists in loaded config
 	target, exists := cfg.Targets[name]
+
+	// If disabling locally and target not in local config, check global
+	if scope == config.ScopeLocal && !exists {
+		// Load global config to find the target
+		globalLoader := config.NewLoader(config.ScopeGlobal)
+		globalCfg, err := globalLoader.Load()
+		if err == nil {
+			if globalTarget, globalExists := globalCfg.Targets[name]; globalExists {
+				target = globalTarget
+				exists = true
+				// Will create local entry with global path and local enabled status
+				fmt.Printf("→ Creating local override for target %q (defined globally)\n", name)
+			}
+		}
+	}
+
 	if !exists {
 		PrintHint(HintTargetNotFound)
 		return fmt.Errorf("target %q not found", name)

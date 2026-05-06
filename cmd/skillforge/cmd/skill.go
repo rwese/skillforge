@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/rwese/skillforge/internal/agents"
 	"github.com/rwese/skillforge/internal/config"
 	"github.com/rwese/skillforge/internal/repo"
 	"github.com/rwese/skillforge/internal/search"
@@ -38,12 +37,12 @@ var (
 )
 
 func init() {
-	skillInstallCmd.Flags().StringVarP(&agentFlag, "agent", "a", "", "Install to specific agent (pi, codex, claude)")
-	skillListCmd.Flags().StringVarP(&agentFlag, "agent", "a", "", "Filter by agent")
+	skillInstallCmd.Flags().StringVarP(&targetFlag, "target", "t", "", "Install to specific target")
+	skillListCmd.Flags().StringVarP(&targetFlag, "target", "t", "", "Filter by target")
 	skillListCmd.Flags().StringVarP(&formatFlag, "format", "f", "text", "Output format: text, json")
-	skillRemoveCmd.Flags().StringVarP(&agentFlag, "agent", "a", "", "Remove from specific agent")
+	skillRemoveCmd.Flags().StringVarP(&targetFlag, "target", "t", "", "Remove from specific target")
 	skillUpdateCmd.Flags().BoolVarP(&checkFlag, "check", "c", false, "Check for updates without applying")
-	skillUpdateCmd.Flags().StringVarP(&agentFlag, "agent", "a", "", "Update skills for specific agent")
+	skillUpdateCmd.Flags().StringVarP(&targetFlag, "target", "t", "", "Update skills for specific target")
 }
 
 var skillInstallCmd = &cobra.Command{
@@ -68,7 +67,7 @@ func runSkillInstall(cmd *cobra.Command, args []string) error {
 	cache := repo.NewCache(config.ExpandPath(allCache.Path))
 
 	// Determine paths to install to (uses scoped config)
-	installPaths, err := getInstallPaths(agentFlag, scopeFlag)
+	installPaths, err := getInstallPaths(targetFlag, scopeFlag)
 	if err != nil {
 		return err
 	}
@@ -140,21 +139,21 @@ func runSkillInstall(cmd *cobra.Command, args []string) error {
 			fmt.Printf("Installing %s to %s...\n", skillName, ip.Label)
 
 			// Use progress callback if verbose
-		var installErr error
-		if verboseFlag {
-			installErr = repo.InstallSkillWithProgress(*targetSkill, targetPath, commit, func(src, dst string) {
-				verbose("Copied %s -> %s", src, dst)
-			})
-		} else {
-			installErr = repo.InstallSkill(*targetSkill, targetPath, commit)
-		}
+			var installErr error
+			if verboseFlag {
+				installErr = repo.InstallSkillWithProgress(*targetSkill, targetPath, commit, func(src, dst string) {
+					verbose("Copied %s -> %s", src, dst)
+				})
+			} else {
+				installErr = repo.InstallSkill(*targetSkill, targetPath, commit)
+			}
 
-		if installErr != nil {
-			errors = append(errors, fmt.Errorf("installing to %s: %w", ip.Label, installErr))
-			continue
+			if installErr != nil {
+				errors = append(errors, fmt.Errorf("installing to %s: %w", ip.Label, installErr))
+				continue
+			}
+			fmt.Printf("  ✓ %s installed to %s\n", skillName, ip.Label)
 		}
-		fmt.Printf("  ✓ %s installed to %s\n", skillName, ip.Label)
-	}
 	}
 
 	if len(errors) > 0 {
@@ -171,79 +170,101 @@ func runSkillInstall(cmd *cobra.Command, args []string) error {
 // InstallPath represents a path to install a skill to.
 type InstallPath struct {
 	Path  string
-	Label string // e.g., "pi (global)", "codex (local)"
+	Label string // e.g., "pi (global)", "pi (local)"
 }
 
-// getInstallPaths returns paths to install skills to based on agent and scope flags.
-func getInstallPaths(agentName, scope string) ([]InstallPath, error) {
-	agentsCfg, err := agents.LoadAgents()
+// getInstallPaths returns paths to install skills to based on target and scope flags.
+func getInstallPaths(targetName, scope string) ([]InstallPath, error) {
+	globalCfg, err := loadConfigScope(config.ScopeGlobal)
 	if err != nil {
-		return nil, fmt.Errorf("loading agents config: %w", err)
+		return nil, err
 	}
+
+	localCfg, err := loadConfigScope(config.ScopeLocal)
+	localConfigExists := config.DetectLocalPath() != ""
 
 	var paths []InstallPath
 
-	if agentName != "" {
-		// Specific agent
-		agent, exists := agentsCfg.Agents[agentName]
-		if !exists {
-			return nil, fmt.Errorf("agent %q not configured. Run 'skillforge setup list' to see configured agents", agentName)
+	if targetName != "" {
+		// Specific target - check both global and local
+		found := false
+
+		// Check global targets
+		if target, ok := globalCfg.Targets[targetName]; ok && target.Enabled {
+			if shouldUseScope(scope, "global") {
+				paths = append(paths, InstallPath{
+					Path:  config.ExpandPath(target.Path),
+					Label: fmt.Sprintf("%s (global)", targetName),
+				})
+				found = true
+			}
 		}
-		paths = appendAgentPaths(paths, agentName, agent, scope)
+
+		// Check local targets
+		if localConfigExists && localCfg != nil {
+			if target, ok := localCfg.Targets[targetName]; ok && target.Enabled {
+				if shouldUseScope(scope, "local") {
+					paths = append(paths, InstallPath{
+						Path:  config.ExpandPath(target.Path),
+						Label: fmt.Sprintf("%s (local)", targetName),
+					})
+					found = true
+				}
+			}
+		}
+
+		if !found {
+			return nil, fmt.Errorf("target %q not found or not enabled", targetName)
+		}
 	} else {
-		// All agents
-		for name, agent := range agentsCfg.Agents {
-			paths = appendAgentPaths(paths, name, agent, scope)
+		// All enabled targets
+		for name, target := range globalCfg.Targets {
+			if !target.Enabled {
+				continue
+			}
+			if shouldUseScope(scope, "global") {
+				paths = append(paths, InstallPath{
+					Path:  config.ExpandPath(target.Path),
+					Label: fmt.Sprintf("%s (global)", name),
+				})
+			}
+		}
+
+		// Local targets
+		if localConfigExists && localCfg != nil {
+			for name, target := range localCfg.Targets {
+				if !target.Enabled {
+					continue
+				}
+				if shouldUseScope(scope, "local") {
+					paths = append(paths, InstallPath{
+						Path:  config.ExpandPath(target.Path),
+						Label: fmt.Sprintf("%s (local)", name),
+					})
+				}
+			}
 		}
 	}
 
 	return paths, nil
 }
 
-// appendAgentPaths adds paths from an agent based on scope.
-func appendAgentPaths(paths []InstallPath, agentName string, agent agents.Agent, scope string) []InstallPath {
-	switch scope {
+// shouldUseScope returns true if the given scope should be used.
+func shouldUseScope(scopeFlag, scopeValue string) bool {
+	switch scopeFlag {
 	case "global":
-		if agent.Global != nil {
-			paths = append(paths, InstallPath{
-				Path:  agents.ExpandPath(agent.Global.Value),
-				Label: fmt.Sprintf("%s (global)", agentName),
-			})
-		}
+		return scopeValue == "global"
 	case "local":
-		if agent.Local != nil {
-			paths = append(paths, InstallPath{
-				Path:  agents.ExpandPath(agent.Local.Value),
-				Label: fmt.Sprintf("%s (local)", agentName),
-			})
-		}
-	case "auto":
-		fallthrough
-	default:
-		// In project = local first, then global; outside = global only
-		if isInProject() {
-			if agent.Local != nil {
-				paths = append(paths, InstallPath{
-					Path:  agents.ExpandPath(agent.Local.Value),
-					Label: fmt.Sprintf("%s (local)", agentName),
-				})
-			}
-			if agent.Global != nil {
-				paths = append(paths, InstallPath{
-					Path:  agents.ExpandPath(agent.Global.Value),
-					Label: fmt.Sprintf("%s (global)", agentName),
-				})
-			}
-		} else {
-			if agent.Global != nil {
-				paths = append(paths, InstallPath{
-					Path:  agents.ExpandPath(agent.Global.Value),
-					Label: fmt.Sprintf("%s (global)", agentName),
-				})
-			}
-		}
+		return scopeValue == "local"
+	default: // auto
+		return true
 	}
-	return paths
+}
+
+// loadConfigScope loads config for a specific scope.
+func loadConfigScope(scope config.Scope) (*config.Config, error) {
+	loader := config.NewLoader(scope)
+	return loader.Load()
 }
 
 var skillListCmd = &cobra.Command{
@@ -253,28 +274,67 @@ var skillListCmd = &cobra.Command{
 }
 
 func runSkillList(cmd *cobra.Command, args []string) error {
-	agentsCfg, err := agents.LoadAgents()
+	globalCfg, err := loadConfigScope(config.ScopeGlobal)
 	if err != nil {
-		return fmt.Errorf("loading agents config: %w", err)
+		return err
 	}
+
+	localCfg, err := loadConfigScope(config.ScopeLocal)
+	localConfigExists := config.DetectLocalPath() != ""
 
 	var localSkills []SkillOutput
 	var globalSkills []SkillOutput
 
-	// Collect skills grouped by scope: local first, then global
-	for agentName, agent := range agentsCfg.Agents {
-		if agentFlag != "" && agentFlag != agentName {
+	// Collect skills from global targets
+	for targetName, target := range globalCfg.Targets {
+		if targetFlag != "" && targetFlag != targetName {
+			continue
+		}
+		if !target.Enabled {
 			continue
 		}
 
-		// List local skills
-		if shouldListScope(agent.Local, scopeFlag, "local") {
-			if agent.Local != nil {
-				path := agents.ExpandPath(agent.Local.Value)
+		// List global skills
+		if shouldUseScope(scopeFlag, "global") {
+			path := config.ExpandPath(target.Path)
+			skills, err := repo.ListInstalledSkills(path)
+			if err != nil {
+				if !os.IsNotExist(err) {
+					return fmt.Errorf("listing skills in %s (global): %w", targetName, err)
+				}
+			}
+			for _, skill := range skills {
+				commit := skill.Grimoire.Commit
+				if len(commit) > 7 {
+					commit = commit[:7]
+				}
+				globalSkills = append(globalSkills, SkillOutput{
+					Name:   skill.Name,
+					Commit: commit,
+					Target: fmt.Sprintf("%s/global", targetName),
+					Source: skill.Grimoire.Source,
+				})
+			}
+		}
+	}
+
+	// Collect skills from local targets
+	if localConfigExists && localCfg != nil {
+		for targetName, target := range localCfg.Targets {
+			if targetFlag != "" && targetFlag != targetName {
+				continue
+			}
+			if !target.Enabled {
+				continue
+			}
+
+			// List local skills
+			if shouldUseScope(scopeFlag, "local") {
+				path := config.ExpandPath(target.Path)
 				skills, err := repo.ListInstalledSkills(path)
 				if err != nil {
 					if !os.IsNotExist(err) {
-						return fmt.Errorf("listing skills in %s (local): %w", agentName, err)
+						return fmt.Errorf("listing skills in %s (local): %w", targetName, err)
 					}
 				}
 				for _, skill := range skills {
@@ -285,32 +345,7 @@ func runSkillList(cmd *cobra.Command, args []string) error {
 					localSkills = append(localSkills, SkillOutput{
 						Name:   skill.Name,
 						Commit: commit,
-						Target: fmt.Sprintf("%s/local", agentName),
-						Source: skill.Grimoire.Source,
-					})
-				}
-			}
-		}
-
-		// List global skills
-		if shouldListScope(agent.Global, scopeFlag, "global") {
-			if agent.Global != nil {
-				path := agents.ExpandPath(agent.Global.Value)
-				skills, err := repo.ListInstalledSkills(path)
-				if err != nil {
-					if !os.IsNotExist(err) {
-						return fmt.Errorf("listing skills in %s (global): %w", agentName, err)
-					}
-				}
-				for _, skill := range skills {
-					commit := skill.Grimoire.Commit
-					if len(commit) > 7 {
-						commit = commit[:7]
-					}
-					globalSkills = append(globalSkills, SkillOutput{
-						Name:   skill.Name,
-						Commit: commit,
-						Target: fmt.Sprintf("%s/global", agentName),
+						Target: fmt.Sprintf("%s/local", targetName),
 						Source: skill.Grimoire.Source,
 					})
 				}
@@ -329,8 +364,8 @@ func runSkillList(cmd *cobra.Command, args []string) error {
 
 	if len(allSkills) == 0 {
 		fmt.Println("No skills installed.")
-		if len(agentsCfg.Agents) == 0 {
-			fmt.Println("Run 'skillforge setup detect' to configure agents.")
+		if len(globalCfg.Targets) == 0 {
+			fmt.Println("Run 'skillforge target list' to see configured targets.")
 		}
 		return nil
 	}
@@ -345,21 +380,6 @@ func runSkillList(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// shouldListScope determines if a scope should be listed based on scope flag.
-func shouldListScope(path *agents.Path, scopeFlag, scopeValue string) bool {
-	if path == nil {
-		return false
-	}
-	switch scopeFlag {
-	case "global":
-		return scopeValue == "global"
-	case "local":
-		return scopeValue == "local"
-	default: // auto
-		return true
-	}
-}
-
 var skillRemoveCmd = &cobra.Command{
 	Use:   "remove [name]",
 	Short: "Remove a skill",
@@ -370,13 +390,8 @@ var skillRemoveCmd = &cobra.Command{
 func runSkillRemove(cmd *cobra.Command, args []string) error {
 	skillName := args[0]
 
-	agentsCfg, err := agents.LoadAgents()
-	if err != nil {
-		return fmt.Errorf("loading agents config: %w", err)
-	}
-
-	// Determine paths to remove from
-	allPaths := getRemovePaths(agentsCfg, agentFlag, scopeFlag)
+	// Get paths to remove from
+	allPaths := getRemovePaths(targetFlag, scopeFlag)
 
 	// Filter to only paths where skill actually exists
 	var removePaths []RemovePath
@@ -419,64 +434,74 @@ type RemovePath struct {
 	Label string
 }
 
-func getRemovePaths(cfg *agents.AgentsConfig, agentName, scope string) []RemovePath {
+func getRemovePaths(targetName, scope string) []RemovePath {
+	globalCfg, err := loadConfigScope(config.ScopeGlobal)
+	if err != nil {
+		return nil
+	}
+
+	localCfg, err := loadConfigScope(config.ScopeLocal)
+	localConfigExists := config.DetectLocalPath() != ""
+
 	var paths []RemovePath
 
-	if agentName != "" {
-		agent, exists := cfg.Agents[agentName]
-		if !exists {
-			return paths
+	if targetName != "" {
+		// Specific target
+		if target, ok := globalCfg.Targets[targetName]; ok && target.Enabled {
+			if shouldUseScope(scope, "global") {
+				paths = append(paths, RemovePath{
+					Path:  config.ExpandPath(target.Path),
+					Label: fmt.Sprintf("%s (global)", targetName),
+				})
+			}
 		}
-		paths = appendRemovePaths(paths, agentName, agent, scope)
+
+		if localConfigExists && localCfg != nil {
+			if target, ok := localCfg.Targets[targetName]; ok && target.Enabled {
+				if shouldUseScope(scope, "local") {
+					paths = append(paths, RemovePath{
+						Path:  config.ExpandPath(target.Path),
+						Label: fmt.Sprintf("%s (local)", targetName),
+					})
+				}
+			}
+		}
 	} else {
-		for name, agent := range cfg.Agents {
-			paths = appendRemovePaths(paths, name, agent, scope)
+		// All enabled targets
+		for name, target := range globalCfg.Targets {
+			if !target.Enabled {
+				continue
+			}
+			if shouldUseScope(scope, "global") {
+				paths = append(paths, RemovePath{
+					Path:  config.ExpandPath(target.Path),
+					Label: fmt.Sprintf("%s (global)", name),
+				})
+			}
+		}
+
+		if localConfigExists && localCfg != nil {
+			for name, target := range localCfg.Targets {
+				if !target.Enabled {
+					continue
+				}
+				if shouldUseScope(scope, "local") {
+					paths = append(paths, RemovePath{
+						Path:  config.ExpandPath(target.Path),
+						Label: fmt.Sprintf("%s (local)", name),
+					})
+				}
+			}
 		}
 	}
 
-	return paths
-}
-
-func appendRemovePaths(paths []RemovePath, agentName string, agent agents.Agent, scope string) []RemovePath {
-	switch scope {
-	case "global":
-		if agent.Global != nil {
-			paths = append(paths, RemovePath{
-				Path:  agents.ExpandPath(agent.Global.Value),
-				Label: fmt.Sprintf("%s (global)", agentName),
-			})
-		}
-	case "local":
-		if agent.Local != nil {
-			paths = append(paths, RemovePath{
-				Path:  agents.ExpandPath(agent.Local.Value),
-				Label: fmt.Sprintf("%s (local)", agentName),
-			})
-		}
-	case "auto":
-		fallthrough
-	default:
-		// Remove from wherever it exists
-		if agent.Global != nil {
-			paths = append(paths, RemovePath{
-				Path:  agents.ExpandPath(agent.Global.Value),
-				Label: fmt.Sprintf("%s (global)", agentName),
-			})
-		}
-		if agent.Local != nil {
-			paths = append(paths, RemovePath{
-				Path:  agents.ExpandPath(agent.Local.Value),
-				Label: fmt.Sprintf("%s (local)", agentName),
-			})
-		}
-	}
 	return paths
 }
 
 var skillSearchCmd = &cobra.Command{
 	Use:   "search [query]",
 	Short: "Search for skills",
-	Long:  `Search for skills by name or description.
+	Long: `Search for skills by name or description.
 
 Supports multi-word queries. No flags required - just type your search terms.
 
@@ -597,35 +622,48 @@ func runSkillUpdate(cmd *cobra.Command, args []string) error {
 	fmt.Println("Checking skill updates...")
 	hasUpdates := false
 
-	agentsCfg, err := agents.LoadAgents()
+	globalCfg, err := loadConfigScope(config.ScopeGlobal)
 	if err != nil {
-		return fmt.Errorf("loading agents config: %w", err)
+		return err
 	}
 
-	for agentName, agent := range agentsCfg.Agents {
-		if agentFlag != "" && agentFlag != agentName {
+	localCfg, err := loadConfigScope(config.ScopeLocal)
+	localConfigExists := config.DetectLocalPath() != ""
+
+	// Check global targets
+	for targetName, target := range globalCfg.Targets {
+		if targetFlag != "" && targetFlag != targetName {
+			continue
+		}
+		if !target.Enabled {
 			continue
 		}
 
-		// Check global
-		if shouldListScope(agent.Global, scopeFlag, "global") {
-			if agent.Global != nil {
-				path := agents.ExpandPath(agent.Global.Value)
-				updates, err := checkSkillUpdates(agentName, "global", path, cfg, cache)
-				if err != nil {
-					fmt.Printf("  ! Error checking %s (global): %v\n", agentName, err)
-				}
-				hasUpdates = hasUpdates || updates
+		if shouldUseScope(scopeFlag, "global") {
+			path := config.ExpandPath(target.Path)
+			updates, err := checkSkillUpdates(targetName, "global", path, cfg, cache)
+			if err != nil {
+				fmt.Printf("  ! Error checking %s (global): %v\n", targetName, err)
 			}
+			hasUpdates = hasUpdates || updates
 		}
+	}
 
-		// Check local
-		if shouldListScope(agent.Local, scopeFlag, "local") {
-			if agent.Local != nil {
-				path := agents.ExpandPath(agent.Local.Value)
-				updates, err := checkSkillUpdates(agentName, "local", path, cfg, cache)
+	// Check local targets
+	if localConfigExists && localCfg != nil {
+		for targetName, target := range localCfg.Targets {
+			if targetFlag != "" && targetFlag != targetName {
+				continue
+			}
+			if !target.Enabled {
+				continue
+			}
+
+			if shouldUseScope(scopeFlag, "local") {
+				path := config.ExpandPath(target.Path)
+				updates, err := checkSkillUpdates(targetName, "local", path, cfg, cache)
 				if err != nil {
-					fmt.Printf("  ! Error checking %s (local): %v\n", agentName, err)
+					fmt.Printf("  ! Error checking %s (local): %v\n", targetName, err)
 				}
 				hasUpdates = hasUpdates || updates
 			}
@@ -639,7 +677,7 @@ func runSkillUpdate(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func checkSkillUpdates(agentName, scope string, path string, cfg *config.Config, cache *repo.Cache) (bool, error) {
+func checkSkillUpdates(targetName, scope string, path string, cfg *config.Config, cache *repo.Cache) (bool, error) {
 	skills, err := repo.ListInstalledSkills(path)
 	if err != nil {
 		return false, nil
@@ -647,13 +685,13 @@ func checkSkillUpdates(agentName, scope string, path string, cfg *config.Config,
 
 	if len(skills) == 0 {
 		if verboseFlag {
-			fmt.Printf("Checking %s (%s): no skills installed\n", agentName, scope)
+			fmt.Printf("Checking %s (%s): no skills installed\n", targetName, scope)
 		}
 		return false, nil
 	}
 
 	hasUpdates := false
-	label := fmt.Sprintf("%s (%s)", agentName, scope)
+	label := fmt.Sprintf("%s (%s)", targetName, scope)
 
 	if verboseFlag {
 		fmt.Printf("Checking %d skills in %s...\n", len(skills), label)

@@ -2,11 +2,11 @@
 build:
     go build -o skillforge ./cmd/skillforge/
 
-# Install skillforge to ~/.local/bin
+# Install skillforge to $HOME/go/bin/
 install: build
-    mkdir -p ~/.local/bin
-    mv skillforge ~/.local/bin/skillforge
-    chmod +x ~/.local/bin/skillforge
+    mkdir -p $HOME/go/bin
+    mv skillforge $HOME/go/bin/skillforge
+    chmod +x $HOME/go/bin/skillforge
 
 # Run skillforge with optional args
 run *args:
