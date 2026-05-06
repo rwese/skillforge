@@ -8,11 +8,12 @@ import (
 )
 
 var completionCmd = &cobra.Command{
-	Use:   "completion [bash|zsh|fish|powershell]",
-	Short: "Generate shell completion scripts",
-	Long:  "", // Set dynamically
+	Use:                   "completion [bash|zsh|fish|powershell]",
+	Short:                 "Generate shell completion scripts",
+	Long:                  "", // Set dynamically
 	DisableFlagsInUseLine: true,
 	ValidArgs:             []string{"bash", "zsh", "fish", "powershell"},
+	ValidArgsFunction:     completeShells,
 	Args:                  cobra.ExactValidArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// Refresh Long with current command name

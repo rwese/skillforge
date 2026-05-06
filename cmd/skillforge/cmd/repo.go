@@ -36,6 +36,7 @@ func init() {
 	repoAddCmd.Flags().StringVarP(&branchFlag, "branch", "b", "main", "Branch to track")
 	repoAddCmd.Flags().StringVarP(&aliasFlag, "alias", "a", "", "Alias for this repository")
 	repoListCmd.Flags().StringVarP(&formatFlag, "format", "f", "text", "Output format: text, json")
+	_ = repoListCmd.RegisterFlagCompletionFunc("format", completeFormats)
 }
 
 var repoAddCmd = &cobra.Command{
@@ -161,10 +162,11 @@ func runRepoList(cmd *cobra.Command, args []string) error {
 }
 
 var repoRemoveCmd = &cobra.Command{
-	Use:   "remove [name]",
-	Short: "Remove a cached repository",
-	Args:  cobra.ExactArgs(1),
-	RunE:  runRepoRemove,
+	Use:               "remove [name]",
+	Short:             "Remove a cached repository",
+	Args:              cobra.ExactArgs(1),
+	ValidArgsFunction: completeRepos,
+	RunE:              runRepoRemove,
 }
 
 func runRepoRemove(cmd *cobra.Command, args []string) error {
@@ -212,9 +214,10 @@ func init() {
 }
 
 var repoUpdateCmd = &cobra.Command{
-	Use:   "update [name]",
-	Short: "Update cached repositories",
-	RunE:  runRepoUpdate,
+	Use:               "update [name]",
+	Short:             "Update cached repositories",
+	ValidArgsFunction: completeRepos,
+	RunE:              runRepoUpdate,
 }
 
 func runRepoUpdate(cmd *cobra.Command, args []string) error {

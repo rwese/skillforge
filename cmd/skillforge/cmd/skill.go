@@ -40,13 +40,18 @@ func init() {
 	skillListCmd.Flags().StringVarP(&targetFlag, "target", "t", "", "Filter by target")
 	skillListCmd.Flags().StringVarP(&formatFlag, "format", "f", "text", "Output format: text, json")
 	skillRemoveCmd.Flags().StringVarP(&targetFlag, "target", "t", "", "Remove from specific target")
+	_ = skillInstallCmd.RegisterFlagCompletionFunc("target", completeTargets)
+	_ = skillListCmd.RegisterFlagCompletionFunc("target", completeTargets)
+	_ = skillListCmd.RegisterFlagCompletionFunc("format", completeFormats)
+	_ = skillRemoveCmd.RegisterFlagCompletionFunc("target", completeTargets)
 }
 
 var skillInstallCmd = &cobra.Command{
-	Use:   "install [name]...",
-	Short: "Install one or more skills",
-	Args:  cobra.MinimumNArgs(1),
-	RunE:  runSkillInstall,
+	Use:               "install [name]...",
+	Short:             "Install one or more skills",
+	Args:              cobra.MinimumNArgs(1),
+	ValidArgsFunction: completeAvailableSkills,
+	RunE:              runSkillInstall,
 }
 
 func runSkillInstall(cmd *cobra.Command, args []string) error {
@@ -421,10 +426,11 @@ func runSkillList(cmd *cobra.Command, args []string) error {
 }
 
 var skillRemoveCmd = &cobra.Command{
-	Use:   "remove [name]",
-	Short: "Remove a skill",
-	Args:  cobra.ExactArgs(1),
-	RunE:  runSkillRemove,
+	Use:               "remove [name]",
+	Short:             "Remove a skill",
+	Args:              cobra.ExactArgs(1),
+	ValidArgsFunction: completeInstalledSkills,
+	RunE:              runSkillRemove,
 }
 
 func runSkillRemove(cmd *cobra.Command, args []string) error {
@@ -549,8 +555,9 @@ Examples:
   skillforge skill search docker
   skillforge skill search "docker container"
   skillforge skill search postgres database`,
-	Args: cobra.MinimumNArgs(1),
-	RunE: runSkillSearch,
+	Args:              cobra.MinimumNArgs(1),
+	ValidArgsFunction: noFileCompletion,
+	RunE:              runSkillSearch,
 }
 
 func runSkillSearch(cmd *cobra.Command, args []string) error {

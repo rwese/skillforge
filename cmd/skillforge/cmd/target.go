@@ -100,6 +100,7 @@ var formatFlag string
 
 func init() {
 	targetListCmd.Flags().StringVarP(&formatFlag, "format", "f", "text", "Output format: text, json")
+	_ = targetListCmd.RegisterFlagCompletionFunc("format", completeFormats)
 }
 
 var targetAddCmd = &cobra.Command{
@@ -152,10 +153,11 @@ func runTargetAdd(cmd *cobra.Command, args []string) error {
 }
 
 var targetRemoveCmd = &cobra.Command{
-	Use:   "remove [name]",
-	Short: "Remove a target",
-	Args:  cobra.ExactArgs(1),
-	RunE:  runTargetRemove,
+	Use:               "remove [name]",
+	Short:             "Remove a target",
+	Args:              cobra.ExactArgs(1),
+	ValidArgsFunction: completeTargets,
+	RunE:              runTargetRemove,
 }
 
 func runTargetRemove(cmd *cobra.Command, args []string) error {
@@ -194,10 +196,11 @@ func runTargetRemove(cmd *cobra.Command, args []string) error {
 }
 
 var targetEnableCmd = &cobra.Command{
-	Use:   "enable [name]",
-	Short: "Enable a target",
-	Args:  cobra.ExactArgs(1),
-	RunE:  runTargetEnable,
+	Use:               "enable [name]",
+	Short:             "Enable a target",
+	Args:              cobra.ExactArgs(1),
+	ValidArgsFunction: completeTargets,
+	RunE:              runTargetEnable,
 }
 
 func runTargetEnable(cmd *cobra.Command, args []string) error {
@@ -254,10 +257,11 @@ func runTargetEnable(cmd *cobra.Command, args []string) error {
 }
 
 var targetDisableCmd = &cobra.Command{
-	Use:   "disable [name]",
-	Short: "Disable a target",
-	Args:  cobra.ExactArgs(1),
-	RunE:  runTargetDisable,
+	Use:               "disable [name]",
+	Short:             "Disable a target",
+	Args:              cobra.ExactArgs(1),
+	ValidArgsFunction: completeTargets,
+	RunE:              runTargetDisable,
 }
 
 func runTargetDisable(cmd *cobra.Command, args []string) error {

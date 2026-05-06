@@ -201,7 +201,7 @@ func init() {
 			}
 			return s
 		},
-		"cleanUsage": cleanUsage,
+		"cleanUsage":     cleanUsage,
 		"removeHelpFlag": removeHelpFlag,
 	}
 	tmpl, err := template.New("help").Funcs(funcMap).Parse(helpTemplate)
@@ -249,6 +249,7 @@ func init() {
 	rootCmd.PersistentFlags().BoolVarP(&dryRunFlag, "dry-run", "n", false, "Preview changes without applying")
 	rootCmd.PersistentFlags().BoolVarP(&yesFlag, "yes", "y", false, "Skip confirmations and use defaults")
 	rootCmd.PersistentFlags().BoolVarP(&verboseFlag, "verbose", "v", false, "Enable verbose debug output")
+	_ = rootCmd.RegisterFlagCompletionFunc("scope", completeScopes)
 
 	// Add shell completion command
 	rootCmd.AddCommand(completionCmd)

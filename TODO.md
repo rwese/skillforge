@@ -1,5 +1,14 @@
 # Target Model Migration: GlobalPath/LocalPath
 
+## Completed: Shell Autocompletions
+
+- [x] Add dynamic completions for top-level Cobra commands
+- [x] Complete available skill names for `skill install`
+- [x] Complete installed skill names for `skill remove`
+- [x] Complete repository and target names for management commands
+- [x] Complete common flag values for `--target`, `--scope`, `--format`, and `completion`
+- [x] Build, test, and manually verify completion output
+
 ## Overview
 Migrate targets from single `Path` to dual `GlobalPath`/`LocalPath` model.
 
