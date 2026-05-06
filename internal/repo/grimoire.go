@@ -149,9 +149,40 @@ func RemoveSkill(targetPath string) error {
 	return os.RemoveAll(targetPath)
 }
 
-// ListInstalledSkills lists all installed skills in a target.
-func ListInstalledSkills(targetPath string) ([]grimoire.InstalledSkill, error) {
-	var skills []grimoire.InstalledSkill
+// LinkSkill creates a symlink from targetPath to the skill's actual path.
+// targetPath is the full path where the symlink should be created (including skill name).
+// skill.Path is the source directory to link to.
+func LinkSkill(skill grimoire.Skill, targetPath string) error {
+	// Ensure parent directory exists
+	parentDir := filepath.Dir(targetPath)
+	if err := os.MkdirAll(parentDir, 0755); err != nil {
+		return fmt.Errorf("creating parent directory: %w", err)
+	}
+
+	// Check if target already exists
+	if _, err := os.Lstat(targetPath); err == nil {
+		return fmt.Errorf("target path already exists: %s", targetPath)
+	}
+
+	// Create symlink
+	// Use relative path from target's directory to skill source
+	relPath, err := filepath.Rel(parentDir, skill.Path)
+	if err != nil {
+		// Fall back to absolute path
+		relPath = skill.Path
+	}
+
+	if err := os.Symlink(relPath, targetPath); err != nil {
+		return fmt.Errorf("creating symlink: %w", err)
+	}
+
+	return nil
+}
+
+// ListInstalledSkillsSymlinks lists all skills in a target directory as symlinks.
+// Returns skills with resolved symlink targets.
+func ListInstalledSkillsSymlinks(targetPath string) ([]grimoire.Skill, error) {
+	var skills []grimoire.Skill
 
 	entries, err := os.ReadDir(targetPath)
 	if err != nil {
@@ -162,20 +193,102 @@ func ListInstalledSkills(targetPath string) ([]grimoire.InstalledSkill, error) {
 	}
 
 	for _, entry := range entries {
-		if !entry.IsDir() {
+		if !entry.IsDir() && entry.Type()&os.ModeSymlink == 0 {
 			continue
 		}
 
 		skillPath := filepath.Join(targetPath, entry.Name())
+
+		// Resolve symlink to get actual source
+		linkTarget, err := os.Readlink(skillPath)
+		if err != nil {
+			// Not a symlink, skip
+			continue
+		}
+
+		// If relative symlink, resolve it
+		if !filepath.IsAbs(linkTarget) {
+			linkTarget = filepath.Join(filepath.Dir(skillPath), linkTarget)
+		}
+
+		skills = append(skills, grimoire.Skill{
+			Name: entry.Name(),
+			Path: linkTarget,
+		})
+	}
+
+	return skills, nil
+}
+
+// IsBrokenSymlink checks if a path is a broken symlink.
+func IsBrokenSymlink(path string) bool {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return false
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		return false
+	}
+	// Try to read the target
+	_, err = os.Readlink(path)
+	return err != nil
+}
+
+// ListInstalledSkills lists all installed skills in a target.
+// It includes both directories with .grimoire files and symlinks.
+func ListInstalledSkills(targetPath string) ([]grimoire.Skill, error) {
+	var skills []grimoire.Skill
+
+	entries, err := os.ReadDir(targetPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return skills, nil
+		}
+		return nil, err
+	}
+
+	for _, entry := range entries {
+		skillPath := filepath.Join(targetPath, entry.Name())
+		info, err := os.Lstat(skillPath)
+		if err != nil {
+			continue
+		}
+
+		// Handle symlinks
+		isSymlink := info.Mode()&os.ModeSymlink != 0
+		if isSymlink {
+			// For symlinks, resolve the actual path
+			linkTarget, err := os.Readlink(skillPath)
+			if err != nil {
+				continue
+			}
+			if !filepath.IsAbs(linkTarget) {
+				linkTarget = filepath.Join(filepath.Dir(skillPath), linkTarget)
+			}
+
+			skills = append(skills, grimoire.Skill{
+				Name: entry.Name(),
+				Path: linkTarget,
+			})
+			continue
+		}
+
+		// For directories, only include if they have a .grimoire file
+		if !entry.IsDir() {
+			continue
+		}
+
+		// Try to read grimoire metadata
 		g, err := ReadGrimoire(skillPath)
 		if err != nil || g == nil {
 			continue
 		}
 
-		skills = append(skills, grimoire.InstalledSkill{
-			Name:     entry.Name(),
-			Path:     skillPath,
-			Grimoire: *g,
+		skills = append(skills, grimoire.Skill{
+			Name:   entry.Name(),
+			Path:   skillPath,
+			Source: g.Source,
+			Commit: g.Commit,
 		})
 	}
 
