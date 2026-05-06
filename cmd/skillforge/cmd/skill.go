@@ -50,18 +50,8 @@ var skillInstallCmd = &cobra.Command{
 }
 
 func runSkillInstall(cmd *cobra.Command, args []string) error {
-	// Load scoped config for installation paths (ignored but validates scope is valid)
-	if _, err := loadConfig(); err != nil {
-		return err
-	}
-
-	// Always load all repos (global + local) for skill discovery since cache is global
-	allRepos, allCache, err := config.NewLoader(config.ScopeLocal).LoadAllRepos()
-	if err != nil {
-		return fmt.Errorf("loading repos: %w", err)
-	}
-
-	cache := repo.NewCache(config.ExpandPath(allCache.Path))
+	// Determine installation scope
+	isGlobalScope := scopeFlag == "global"
 
 	// Determine paths to install to (default is local scope)
 	installPaths, err := getInstallPaths(targetFlag, scopeFlag)
@@ -74,34 +64,106 @@ func runSkillInstall(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("no install paths found")
 	}
 
+	// Load local repos first, then global repos
+	localLoader := config.NewLoader(config.ScopeLocal)
+	localCfg, _ := localLoader.Load()
+	localRepoNames := make(map[string]bool)
+	if localCfg != nil {
+		for repoName := range localCfg.Repos {
+			localRepoNames[repoName] = true
+		}
+	}
+
+	// Load global repos
+	globalLoader := config.NewLoader(config.ScopeGlobal)
+	globalCfg, err := globalLoader.Load()
+	if err != nil {
+		return err
+	}
+
+	// Merge: local repos first, then global (local takes precedence)
+	allRepos := make(map[string]config.RepoInfo)
+	for repoName, info := range globalCfg.Repos {
+		allRepos[repoName] = info
+	}
+	if localCfg != nil {
+		for repoName, info := range localCfg.Repos {
+			allRepos[repoName] = info
+		}
+	}
+
+	cache := repo.NewCache(config.ExpandPath(globalCfg.Cache.Path))
+
 	// Process each skill
 	var errors []error
 	for _, skillName := range args {
 		fmt.Printf("\n=== Installing %s ===\n", skillName)
 
-		// Find the skill across all repos (use merged repos, not scoped)
+		// Find the skill across all repos (local first, then global)
 		var targetSkill *grimoire.Skill
+		var skillRepoName string
 
-		for repoName, info := range allRepos {
-			if !cache.Exists(repoName) {
-				continue
-			}
+		// Search local repos first
+		if localCfg != nil {
+			for repoName, info := range localCfg.Repos {
+				if !cache.Exists(repoName) {
+					continue
+				}
 
-			skills, err := repo.DiscoverSkills(cache.PathFor(repoName), info.URL)
-			if err != nil {
-				continue
-			}
+				skills, err := repo.DiscoverSkills(cache.PathFor(repoName), info.URL)
+				if err != nil {
+					continue
+				}
 
-			for i := range skills {
-				if skills[i].Name == skillName {
-					targetSkill = &skills[i]
+				for i := range skills {
+					if skills[i].Name == skillName {
+						targetSkill = &skills[i]
+						skillRepoName = repoName
+						break
+					}
+				}
+
+				if targetSkill != nil {
 					break
 				}
 			}
+		}
 
-			if targetSkill != nil {
-				break
+		// If not found locally, search global repos
+		if targetSkill == nil {
+			for repoName, info := range globalCfg.Repos {
+				// Skip if already in local repos
+				if localRepoNames[repoName] {
+					continue
+				}
+				if !cache.Exists(repoName) {
+					continue
+				}
+
+				skills, err := repo.DiscoverSkills(cache.PathFor(repoName), info.URL)
+				if err != nil {
+					continue
+				}
+
+				for i := range skills {
+					if skills[i].Name == skillName {
+						targetSkill = &skills[i]
+						skillRepoName = repoName
+						break
+					}
+				}
+
+				if targetSkill != nil {
+					break
+				}
 			}
+		}
+
+		// Check if skill is from local repo and trying to install to global scope
+		if targetSkill != nil && isGlobalScope && localRepoNames[skillRepoName] {
+			err := fmt.Errorf("skill %q is from local repository %q and cannot be installed to global scope", skillName, skillRepoName)
+			errors = append(errors, err)
+			continue
 		}
 
 		if targetSkill == nil {
@@ -524,7 +586,13 @@ func runSkillSearch(cmd *cobra.Command, args []string) error {
 
 	cache := repo.NewCache(config.ExpandPath(cfg.Cache.Path))
 
-	// Collect all skills from all repos
+	// Track local repos for display
+	localRepoNames := make(map[string]bool)
+	for repoName := range cfg.Repos {
+		localRepoNames[repoName] = true
+	}
+
+	// Collect all skills from all repos (local first, then global)
 	skillSets := make(map[string][]grimoire.Skill)
 	for repoName, info := range cfg.Repos {
 		if !cache.Exists(repoName) {
@@ -540,13 +608,25 @@ func runSkillSearch(cmd *cobra.Command, args []string) error {
 
 	results := search.SearchAll(skillSets, query)
 
+	// Build repo name to URL mapping for display
+	repoDisplayNames := make(map[string]string)
+	for repoName, info := range cfg.Repos {
+		repoDisplayNames[info.URL] = repoName
+	}
+
 	if parseFormat(formatFlag) == formatJSON {
 		skillOutputs := make([]SkillOutput, len(results))
 		for i, s := range results {
+			// Format source as <repo>/<skill>
+			repoName := repoDisplayNames[s.Source]
+			if repoName == "" {
+				repoName = s.Source
+			}
+			source := fmt.Sprintf("%s/%s", repoName, s.Name)
 			skillOutputs[i] = SkillOutput{
 				Name:        s.Name,
 				Description: s.Description,
-				Source:      s.Source,
+				Source:      source,
 			}
 		}
 		return printJSON(SearchResultOutput{
@@ -568,7 +648,12 @@ func runSkillSearch(cmd *cobra.Command, args []string) error {
 		if desc == "" {
 			desc = "(no description)"
 		}
-		source := skill.Source
+		// Format source as <repo>/<skill>
+		repoName := repoDisplayNames[skill.Source]
+		if repoName == "" {
+			repoName = skill.Source
+		}
+		source := fmt.Sprintf("%s/%s", repoName, skill.Name)
 		fmt.Printf("  %d. %s  %s  %s\n", i+1, skill.Name, desc, source)
 	}
 
