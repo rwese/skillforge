@@ -237,7 +237,16 @@ func runRepoUpdate(cmd *cobra.Command, args []string) error {
 
 	for name, info := range reposToUpdate {
 		if !cache.Exists(name) {
-			fmt.Printf("  ! %s not in cache, skipping\n", name)
+			// Clone if not in cache (sync mode)
+			spinner := NewSpinner(fmt.Sprintf("Cloning %s (branch: %s)...", info.URL, info.Branch))
+			spinner.Start()
+			if err := cache.Clone(info.URL, info.Branch); err != nil {
+				spinner.Stop()
+				fmt.Printf("  ! Failed to clone %s: %v\n", name, err)
+				continue
+			}
+			spinner.Stop()
+			fmt.Printf("  ✓ Cloned %s\n", name)
 			continue
 		}
 
