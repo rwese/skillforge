@@ -41,10 +41,45 @@ func init() {
 }
 
 func runSync(cmd *cobra.Command, args []string) error {
-	// Step 1: Sync repositories
+	// Step 1: Sync repositories (load from both local and global configs)
 	fmt.Println("=== Syncing repositories ===")
-	if err := runRepoUpdate(cmd, nil); err != nil {
-		fmt.Printf("  ! Warning: repo sync failed: %v\n", err)
+	
+	// Load repos from all configs for sync
+	allRepos, cacheConfig, err := config.NewLoader(config.ScopeLocal).LoadAllRepos()
+	if err != nil {
+		return fmt.Errorf("loading repos: %w", err)
+	}
+	
+
+
+	cache := repo.NewCache(config.ExpandPath(cacheConfig.Path))
+
+	// Sync each repository
+	for name, info := range allRepos {
+		if !cache.Exists(name) {
+			// Clone if not in cache
+			spinner := NewSpinner(fmt.Sprintf("Cloning %s (branch: %s)...", info.URL, info.Branch))
+			spinner.Start()
+			if err := cache.Clone(info.URL, info.Branch); err != nil {
+				spinner.Stop()
+				fmt.Printf("  ! Failed to clone %s: %v\n", name, err)
+				continue
+			}
+			spinner.Stop()
+			fmt.Printf("  ✓ Cloned %s\n", name)
+			continue
+		}
+
+		// Pull updates for existing repos
+		spinner := NewSpinner(fmt.Sprintf("Updating %s ", name))
+		spinner.Start()
+		_ = cache.Pull(name) // Ignore pull errors
+		spinner.Stop()
+		fmt.Printf("  ✓ Updated %s\n", name)
+	}
+
+	if len(allRepos) == 0 {
+		fmt.Println("  No repositories configured. Run 'skillforge repo add <url>' to add one.")
 	}
 
 	// Step 2: Sync across agents (install missing skills as symlinks)
