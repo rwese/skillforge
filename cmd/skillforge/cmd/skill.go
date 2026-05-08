@@ -226,7 +226,7 @@ type InstallPath struct {
 }
 
 // getInstallPaths returns paths to install skills to based on target and scope flags.
-// Default is all scopes. Use -s global for global targets, -s local for local targets.
+// Default is local scope. Use -s global for global targets, -s local for local targets.
 func getInstallPaths(targetName, scope string) ([]InstallPath, error) {
 	globalCfg, err := loadConfigScope(config.ScopeGlobal)
 	if err != nil {
@@ -238,8 +238,8 @@ func getInstallPaths(targetName, scope string) ([]InstallPath, error) {
 
 	var paths []InstallPath
 
-	// Determine which scopes to include
-	includeGlobal := scope == "global" || scope == ""
+	// Determine which scopes to include (default is local)
+	includeGlobal := scope == "global"
 	includeLocal := scope == "local" || scope == ""
 
 	if targetName != "" {
@@ -285,15 +285,29 @@ func getInstallPaths(targetName, scope string) ([]InstallPath, error) {
 			}
 		}
 
-		if includeLocal && localConfigExists && localCfg != nil {
-			for name, target := range localCfg.Targets {
-				if !target.Enabled {
-					continue
+		if includeLocal {
+			if localConfigExists && localCfg != nil && len(localCfg.Targets) > 0 {
+				// Use targets from local config
+				for name, target := range localCfg.Targets {
+					if !target.Enabled || target.LocalPath == "" {
+						continue
+					}
+					paths = append(paths, InstallPath{
+						Path:  config.ExpandPath(target.LocalPath),
+						Label: fmt.Sprintf("%s (local)", name),
+					})
 				}
-				paths = append(paths, InstallPath{
-					Path:  config.ExpandPath(target.LocalPath),
-					Label: fmt.Sprintf("%s (local)", name),
-				})
+			} else {
+				// Fall back to global targets that have LocalPath defined
+				for name, target := range globalCfg.Targets {
+					if !target.Enabled || target.LocalPath == "" {
+						continue
+					}
+					paths = append(paths, InstallPath{
+						Path:  config.ExpandPath(target.LocalPath),
+						Label: fmt.Sprintf("%s (local)", name),
+					})
+				}
 			}
 		}
 	}
@@ -369,17 +383,40 @@ func runSkillList(cmd *cobra.Command, args []string) error {
 	}
 
 	// Collect skills from local targets
-	if localConfigExists && localCfg != nil {
-		for targetName, target := range localCfg.Targets {
-			if targetFlag != "" && targetFlag != targetName {
-				continue
+	if shouldUseScope(scopeFlag, "local") {
+		if localConfigExists && localCfg != nil && len(localCfg.Targets) > 0 {
+			// Use targets from local config
+			for targetName, target := range localCfg.Targets {
+				if targetFlag != "" && targetFlag != targetName {
+					continue
+				}
+				if !target.Enabled || target.LocalPath == "" {
+					continue
+				}
+				path := config.ExpandPath(target.LocalPath)
+				skills, err := repo.ListInstalledSkills(path)
+				if err != nil {
+					if !os.IsNotExist(err) {
+						return fmt.Errorf("listing skills in %s (local): %w", targetName, err)
+					}
+				}
+				for _, skill := range skills {
+					localSkills = append(localSkills, SkillOutput{
+						Name:   skill.Name,
+						Target: fmt.Sprintf("%s/local", targetName),
+						Source: skill.Source,
+					})
+				}
 			}
-			if !target.Enabled {
-				continue
-			}
-
-			// List local skills
-			if shouldUseScope(scopeFlag, "local") {
+		} else {
+			// Fall back to global targets that have LocalPath defined
+			for targetName, target := range globalCfg.Targets {
+				if targetFlag != "" && targetFlag != targetName {
+					continue
+				}
+				if !target.Enabled || target.LocalPath == "" {
+					continue
+				}
 				path := config.ExpandPath(target.LocalPath)
 				skills, err := repo.ListInstalledSkills(path)
 				if err != nil {
@@ -528,15 +565,29 @@ func getRemovePaths(targetName, scope string) []RemovePath {
 			}
 		}
 
-		if includeLocal && localConfigExists && localCfg != nil {
-			for name, target := range localCfg.Targets {
-				if !target.Enabled {
-					continue
+		if includeLocal {
+			if localConfigExists && localCfg != nil && len(localCfg.Targets) > 0 {
+				// Use targets from local config
+				for name, target := range localCfg.Targets {
+					if !target.Enabled || target.LocalPath == "" {
+						continue
+					}
+					paths = append(paths, RemovePath{
+						Path:  config.ExpandPath(target.LocalPath),
+						Label: fmt.Sprintf("%s (local)", name),
+					})
 				}
-				paths = append(paths, RemovePath{
-					Path:  config.ExpandPath(target.LocalPath),
-					Label: fmt.Sprintf("%s (local)", name),
-				})
+			} else {
+				// Fall back to global targets that have LocalPath defined
+				for name, target := range globalCfg.Targets {
+					if !target.Enabled || target.LocalPath == "" {
+						continue
+					}
+					paths = append(paths, RemovePath{
+						Path:  config.ExpandPath(target.LocalPath),
+						Label: fmt.Sprintf("%s (local)", name),
+					})
+				}
 			}
 		}
 	}
