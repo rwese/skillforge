@@ -353,6 +353,11 @@ func runSkillList(cmd *cobra.Command, args []string) error {
 
 	var localSkills []SkillOutput
 	var globalSkills []SkillOutput
+	resolverLocalCfg := localCfg
+	if !localConfigExists {
+		resolverLocalCfg = nil
+	}
+	repoResolver := newSkillListRepoResolver(globalCfg, resolverLocalCfg)
 
 	// Collect skills from global targets
 	for targetName, target := range globalCfg.Targets {
@@ -376,6 +381,7 @@ func runSkillList(cmd *cobra.Command, args []string) error {
 				globalSkills = append(globalSkills, SkillOutput{
 					Name:   skill.Name,
 					Target: fmt.Sprintf("%s/global", targetName),
+					Repo:   repoResolver.Resolve(skill),
 					Source: skill.Source,
 				})
 			}
@@ -404,6 +410,7 @@ func runSkillList(cmd *cobra.Command, args []string) error {
 					localSkills = append(localSkills, SkillOutput{
 						Name:   skill.Name,
 						Target: fmt.Sprintf("%s/local", targetName),
+						Repo:   repoResolver.Resolve(skill),
 						Source: skill.Source,
 					})
 				}
@@ -428,6 +435,7 @@ func runSkillList(cmd *cobra.Command, args []string) error {
 					localSkills = append(localSkills, SkillOutput{
 						Name:   skill.Name,
 						Target: fmt.Sprintf("%s/local", targetName),
+						Repo:   repoResolver.Resolve(skill),
 						Source: skill.Source,
 					})
 				}
@@ -460,6 +468,72 @@ func runSkillList(cmd *cobra.Command, args []string) error {
 	// Default: table format
 	fmt.Println(formatSkillTable(allSkills))
 	return nil
+}
+
+type skillListRepoResolver struct {
+	cache      *repo.Cache
+	repos      map[string]config.RepoInfo
+	sourceName map[string]string
+}
+
+func newSkillListRepoResolver(globalCfg, localCfg *config.Config) skillListRepoResolver {
+	repos := make(map[string]config.RepoInfo)
+	sourceName := make(map[string]string)
+
+	cachePath := ""
+	if globalCfg != nil {
+		cachePath = globalCfg.Cache.Path
+		for name, info := range globalCfg.Repos {
+			repos[name] = info
+		}
+	}
+	if localCfg != nil {
+		if localCfg.Cache.Path != "" {
+			cachePath = localCfg.Cache.Path
+		}
+		for name, info := range localCfg.Repos {
+			repos[name] = info
+		}
+	}
+	for name, info := range repos {
+		sourceName[info.URL] = name
+	}
+
+	return skillListRepoResolver{
+		cache:      repo.NewCache(config.ExpandPath(cachePath)),
+		repos:      repos,
+		sourceName: sourceName,
+	}
+}
+
+func (r skillListRepoResolver) Resolve(skill grimoire.Skill) string {
+	if name := r.sourceName[skill.Source]; name != "" {
+		return name
+	}
+
+	if skill.Path == "" {
+		return ""
+	}
+
+	skillPath, err := filepath.Abs(skill.Path)
+	if err != nil {
+		return ""
+	}
+	skillPath = filepath.Clean(skillPath)
+
+	for repoName := range r.repos {
+		repoPath, err := filepath.Abs(r.cache.PathFor(repoName))
+		if err != nil {
+			continue
+		}
+		repoPath = filepath.Clean(repoPath)
+		rel, err := filepath.Rel(repoPath, skillPath)
+		if err == nil && rel != "." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && rel != ".." {
+			return repoName
+		}
+	}
+
+	return ""
 }
 
 var skillRemoveCmd = &cobra.Command{

@@ -80,6 +80,7 @@ type SkillOutput struct {
 	Name        string `json:"name"`
 	Commit      string `json:"commit"`
 	Target      string `json:"target"`
+	Repo        string `json:"repo"`
 	Source      string `json:"source,omitempty"`
 	Description string `json:"description,omitempty"`
 }
@@ -236,11 +237,15 @@ func formatSkillTable(skills []SkillOutput) string {
 
 	// Calculate column widths
 	targetWidth := 10
+	repoWidth := 10
 	nameWidth := 10
 	commitWidth := 7
 	for _, s := range skills {
 		if len(s.Target) > targetWidth {
 			targetWidth = len(s.Target)
+		}
+		if len(s.Repo) > repoWidth {
+			repoWidth = len(s.Repo)
 		}
 		if len(s.Name) > nameWidth {
 			nameWidth = len(s.Name)
@@ -248,8 +253,9 @@ func formatSkillTable(skills []SkillOutput) string {
 	}
 
 	// Print header
-	header := fmt.Sprintf("%-*s  %-*s  %*s",
+	header := fmt.Sprintf("%-*s  %-*s  %-*s  %*s",
 		targetWidth, "TARGET",
+		repoWidth, "REPO",
 		nameWidth, "SKILL",
 		commitWidth, "COMMIT")
 	b.WriteString(header)
@@ -257,6 +263,7 @@ func formatSkillTable(skills []SkillOutput) string {
 
 	// Print separator
 	sep := strings.Repeat("─", targetWidth) + "  " +
+		strings.Repeat("─", repoWidth) + "  " +
 		strings.Repeat("─", nameWidth) + "  " +
 		strings.Repeat("─", commitWidth)
 	b.WriteString(sep)
@@ -264,8 +271,9 @@ func formatSkillTable(skills []SkillOutput) string {
 
 	// Print rows
 	for _, s := range skills {
-		row := fmt.Sprintf("%-*s  %-*s  %*s",
+		row := fmt.Sprintf("%-*s  %-*s  %-*s  %*s",
 			targetWidth, s.Target,
+			repoWidth, s.Repo,
 			nameWidth, s.Name,
 			commitWidth, s.Commit)
 		b.WriteString(row)
@@ -298,7 +306,11 @@ func formatSkillCompact(skills []SkillOutput) string {
 
 	var lines []string
 	for _, s := range skills {
-		lines = append(lines, fmt.Sprintf("%s/%s@%s", s.Target, s.Name, s.Commit))
+		repoName := s.Repo
+		if repoName == "" {
+			repoName = "-"
+		}
+		lines = append(lines, fmt.Sprintf("%s/%s@%s repo=%s", s.Target, s.Name, s.Commit, repoName))
 	}
 	return strings.Join(lines, "\n")
 }

@@ -9,6 +9,13 @@
 - [x] Complete common flag values for `--target`, `--scope`, `--format`, and `completion`
 - [x] Build, test, and manually verify completion output
 
+## Completed: Skill List Repo Output
+
+- [x] Add repository name to `skill list` table, compact, and JSON output
+- [x] Resolve installed skill repositories from source metadata or cache paths
+- [x] Add regression tests for repo display and resolver behavior
+- [x] Build, test, and manually verify `skill list` output
+
 ## Overview
 Migrate targets from single `Path` to dual `GlobalPath`/`LocalPath` model.
 
