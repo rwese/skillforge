@@ -106,41 +106,50 @@ func runSkillInstall(cmd *cobra.Command, args []string) error {
 
 		// Find the skill across all repos (local first, then global)
 		var targetSkill *grimoire.Skill
-		var skillRepoName string
 
-		// Search local repos first
-		if localCfg != nil {
-			for repoName, info := range localCfg.Repos {
-				if !cache.Exists(repoName) {
-					continue
-				}
+		// Search repos matching target scope first, then fall back to other scope
+		preferredRepos := make(map[string]config.RepoInfo)
+		fallbackRepos := make(map[string]config.RepoInfo)
 
-				skills, err := repo.DiscoverSkills(cache.PathFor(repoName), info.URL)
-				if err != nil {
-					continue
-				}
+		if isGlobalScope {
+			preferredRepos = globalCfg.Repos
+			fallbackRepos = make(map[string]config.RepoInfo)
+			if localCfg != nil {
+				fallbackRepos = localCfg.Repos
+			}
+		} else {
+			if localCfg != nil {
+				preferredRepos = localCfg.Repos
+			}
+			fallbackRepos = globalCfg.Repos
+		}
 
-				for i := range skills {
-					if skills[i].Name == skillName {
-						targetSkill = &skills[i]
-						skillRepoName = repoName
-						break
-					}
-				}
+		// Search preferred scope first
+		for repoName, info := range preferredRepos {
+			if !cache.Exists(repoName) {
+				continue
+			}
 
-				if targetSkill != nil {
+			skills, err := repo.DiscoverSkills(cache.PathFor(repoName), info.URL)
+			if err != nil {
+				continue
+			}
+
+			for i := range skills {
+				if skills[i].Name == skillName {
+					targetSkill = &skills[i]
 					break
 				}
 			}
+
+			if targetSkill != nil {
+				break
+			}
 		}
 
-		// If not found locally, search global repos
+		// Fall back to other scope if not found
 		if targetSkill == nil {
-			for repoName, info := range globalCfg.Repos {
-				// Skip if already in local repos
-				if localRepoNames[repoName] {
-					continue
-				}
+			for repoName, info := range fallbackRepos {
 				if !cache.Exists(repoName) {
 					continue
 				}
@@ -153,7 +162,6 @@ func runSkillInstall(cmd *cobra.Command, args []string) error {
 				for i := range skills {
 					if skills[i].Name == skillName {
 						targetSkill = &skills[i]
-						skillRepoName = repoName
 						break
 					}
 				}
@@ -162,13 +170,6 @@ func runSkillInstall(cmd *cobra.Command, args []string) error {
 					break
 				}
 			}
-		}
-
-		// Check if skill is from local repo and trying to install to global scope
-		if targetSkill != nil && isGlobalScope && localRepoNames[skillRepoName] {
-			err := fmt.Errorf("skill %q is from local repository %q and cannot be installed to global scope", skillName, skillRepoName)
-			errors = append(errors, err)
-			continue
 		}
 
 		if targetSkill == nil {
