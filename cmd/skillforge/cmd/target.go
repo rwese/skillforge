@@ -28,6 +28,27 @@ func init() {
 	targetCmd.AddCommand(targetRemoveCmd)
 	targetCmd.AddCommand(targetEnableCmd)
 	targetCmd.AddCommand(targetDisableCmd)
+	targetCmd.AddCommand(targetGlobalCmd)
+}
+
+var targetGlobalCmd = &cobra.Command{
+	Use:   "global",
+	Short: "Manage named global directories for a target",
+}
+
+func init() {
+	targetGlobalCmd.AddCommand(targetGlobalAddCmd)
+	targetGlobalCmd.AddCommand(targetGlobalRemoveCmd)
+}
+
+func targetToOutput(name string, target config.Target) TargetOutput {
+	return TargetOutput{
+		Name:        name,
+		GlobalPath:  target.GlobalPath,
+		GlobalPaths: target.GlobalPaths,
+		LocalPath:   target.LocalPath,
+		Enabled:     target.Enabled,
+	}
 }
 
 var targetListCmd = &cobra.Command{
@@ -47,10 +68,11 @@ func runTargetList(cmd *cobra.Command, args []string) error {
 	}
 	for name, target := range globalCfg.Targets {
 		targets = append(targets, TargetOutput{
-			Name:       name,
-			GlobalPath: target.GlobalPath,
-			LocalPath:  target.LocalPath,
-			Enabled:    target.Enabled,
+			Name:        name,
+			GlobalPath:  target.GlobalPath,
+			GlobalPaths: target.GlobalPaths,
+			LocalPath:   target.LocalPath,
+			Enabled:     target.Enabled,
 		})
 	}
 
@@ -63,10 +85,11 @@ func runTargetList(cmd *cobra.Command, args []string) error {
 				continue
 			}
 			targets = append(targets, TargetOutput{
-				Name:       name,
-				GlobalPath: target.GlobalPath,
-				LocalPath:  target.LocalPath,
-				Enabled:    target.Enabled,
+				Name:        name,
+				GlobalPath:  target.GlobalPath,
+				GlobalPaths: target.GlobalPaths,
+				LocalPath:   target.LocalPath,
+				Enabled:     target.Enabled,
 			})
 		}
 	}
@@ -140,12 +163,7 @@ func runTargetAdd(cmd *cobra.Command, args []string) error {
 	}
 
 	if parseFormat(formatFlag) == formatJSON {
-		return printJSON(TargetOutput{
-			Name:       name,
-			GlobalPath: globalPath,
-			LocalPath:  localPath,
-			Enabled:    enableFlag,
-		})
+		return printJSON(targetToOutput(name, cfg.Targets[name]))
 	}
 
 	fmt.Printf("✓ Added target %s\n", name)
@@ -244,12 +262,7 @@ func runTargetEnable(cmd *cobra.Command, args []string) error {
 	}
 
 	if parseFormat(formatFlag) == formatJSON {
-		return printJSON(TargetOutput{
-			Name:       name,
-			GlobalPath: target.GlobalPath,
-			LocalPath:  target.LocalPath,
-			Enabled:    true,
-		})
+		return printJSON(targetToOutput(name, target))
 	}
 
 	fmt.Printf("✓ Enabled target %s\n", name)
@@ -305,12 +318,7 @@ func runTargetDisable(cmd *cobra.Command, args []string) error {
 	}
 
 	if parseFormat(formatFlag) == formatJSON {
-		return printJSON(TargetOutput{
-			Name:       name,
-			GlobalPath: target.GlobalPath,
-			LocalPath:  target.LocalPath,
-			Enabled:    false,
-		})
+		return printJSON(targetToOutput(name, target))
 	}
 
 	fmt.Printf("✓ Disabled target %s\n", name)
@@ -357,5 +365,98 @@ func ensureTargetDir(path string) error {
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		return os.MkdirAll(path, 0755)
 	}
+	return nil
+}
+
+var targetGlobalAddCmd = &cobra.Command{
+	Use:               "add [target] [name] [path]",
+	Short:             "Add a named global directory to a target",
+	Args:              cobra.ExactArgs(3),
+	ValidArgsFunction: completeTargets,
+	RunE:              runTargetGlobalAdd,
+}
+
+func runTargetGlobalAdd(cmd *cobra.Command, args []string) error {
+	targetName := args[0]
+	globalName := args[1]
+	globalPath := config.ExpandPath(args[2])
+
+	cfg, err := loadConfig()
+	if err != nil {
+		return err
+	}
+
+	target, exists := cfg.Targets[targetName]
+	if !exists {
+		PrintHint(HintTargetNotFound)
+		return fmt.Errorf("target %q not found", targetName)
+	}
+
+	if target.GlobalPaths == nil {
+		target.GlobalPaths = make(map[string]string)
+	}
+	if _, exists := target.GlobalPaths[globalName]; exists {
+		return fmt.Errorf("global directory %q already exists for target %q", globalName, targetName)
+	}
+
+	target.GlobalPaths[globalName] = globalPath
+	cfg.Targets[targetName] = target
+
+	if err := saveConfig(cfg); err != nil {
+		return err
+	}
+
+	if parseFormat(formatFlag) == formatJSON {
+		return printJSON(targetToOutput(targetName, target))
+	}
+
+	fmt.Printf("✓ Added global directory %s to target %s\n", globalName, targetName)
+	return nil
+}
+
+var targetGlobalRemoveCmd = &cobra.Command{
+	Use:               "remove [target] [name]",
+	Short:             "Remove a named global directory from a target",
+	Args:              cobra.ExactArgs(2),
+	ValidArgsFunction: completeTargets,
+	RunE:              runTargetGlobalRemove,
+}
+
+func runTargetGlobalRemove(cmd *cobra.Command, args []string) error {
+	targetName := args[0]
+	globalName := args[1]
+
+	cfg, err := loadConfig()
+	if err != nil {
+		return err
+	}
+
+	target, exists := cfg.Targets[targetName]
+	if !exists {
+		PrintHint(HintTargetNotFound)
+		return fmt.Errorf("target %q not found", targetName)
+	}
+	if _, exists := target.GlobalPaths[globalName]; !exists {
+		return fmt.Errorf("global directory %q not found for target %q", globalName, targetName)
+	}
+	if len(target.GlobalPaths) == 1 && target.GlobalPath == "" {
+		return fmt.Errorf("cannot remove last global directory from target %q", targetName)
+	}
+
+	delete(target.GlobalPaths, globalName)
+	if len(target.GlobalPaths) == 0 {
+		target.GlobalPaths = nil
+	}
+	cfg.Targets[targetName] = target
+
+	if err := saveConfig(cfg); err != nil {
+		return err
+	}
+
+	if parseFormat(formatFlag) == formatJSON {
+		return printJSON(targetToOutput(targetName, target))
+	}
+
+	fmt.Printf("✓ Removed global directory %s from target %s\n", globalName, targetName)
 	return nil
 }

@@ -113,9 +113,9 @@ Supports multiple agents via extensible target system with auto-detect config sc
   # Install a skill to a specific agent only
   $0 skill install my-git-fu --agent pi
 
-  # Update everything
-  $0 sync --check    # Preview what would change
-  $0 sync            # Apply updates
+  # Check and fix global target sync
+  $0 sync            # Preview what would change
+  $0 sync --fix      # Apply updates
 
   # Check installed skills
   $0 skill list
@@ -144,7 +144,7 @@ Supports multiple agents via extensible target system with auto-detect config sc
   $0 skill search "docker" --format json
   $0 skill install git-fu --agent pi
   $0 skill remove git-fu --agent pi
-  $0 sync --agent pi --check
+  $0 sync --agent pi --fix
   $0 target list
 
 ═══════════════════════════════════════════════════════════════════════════════

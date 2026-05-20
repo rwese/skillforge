@@ -4,6 +4,28 @@ import (
 	"testing"
 )
 
+func TestSyncFlags(t *testing.T) {
+	if syncCmd.Flags().Lookup("fix") == nil {
+		t.Fatal("sync command missing --fix flag")
+	}
+	if syncCmd.Flags().Lookup("check") != nil {
+		t.Fatal("sync command should not expose --check")
+	}
+	if syncCmd.Flags().Lookup("scope") != nil {
+		t.Fatal("sync command should not expose --scope")
+	}
+}
+
+func TestSyncRejectsScopeFlag(t *testing.T) {
+	origScope := scopeFlag
+	defer func() { scopeFlag = origScope }()
+
+	scopeFlag = "global"
+	if err := rejectSyncScopeFlag(syncCmd); err == nil {
+		t.Fatal("expected sync scope rejection")
+	}
+}
+
 // TestCollectSkillNames tests skill name collection from directories.
 func TestCollectSkillNames(t *testing.T) {
 	// Test with non-existent directory - should return nil
@@ -60,6 +82,19 @@ func TestFindMissingSkills(t *testing.T) {
 				"pi/global":     {"skill-b", "skill-c"},
 				"codex/local":   {"skill-a", "skill-c"},
 				"claude/global": {"skill-a", "skill-b"},
+			},
+		},
+		{
+			name: "multiple named global directories sync independently",
+			installedSkills: map[string]map[string]bool{
+				"pi/global:default":    {"skill-a": true, "skill-b": true},
+				"codex/global:default": {"skill-a": true},
+				"codex/global:shared":  {"skill-b": true},
+			},
+			wantMissing: map[string][]string{
+				"pi/global:default":    nil,
+				"codex/global:default": {"skill-b"},
+				"codex/global:shared":  {"skill-a"},
 			},
 		},
 		{

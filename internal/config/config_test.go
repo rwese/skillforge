@@ -696,14 +696,14 @@ enabled = true
 	cfg := &Config{
 		Targets: map[string]Target{
 			"local": {
-				Name:    "local",
+				Name:       "local",
 				GlobalPath: "/local/skills",
-				Enabled: true,
+				Enabled:    true,
 			},
 			"new-local": {
-				Name:    "new-local",
+				Name:       "new-local",
 				GlobalPath: "/new/local",
-				Enabled: true,
+				Enabled:    true,
 			},
 		},
 	}
@@ -777,14 +777,14 @@ branch = "main"
 	cfg := &Config{
 		Targets: map[string]Target{
 			"pi": {
-				Name:    "pi",
+				Name:       "pi",
 				GlobalPath: "/global/pi",
-				Enabled: true,
+				Enabled:    true,
 			},
 			"new-global": {
-				Name:    "new-global",
+				Name:       "new-global",
 				GlobalPath: "/new/global",
-				Enabled: true,
+				Enabled:    true,
 			},
 		},
 	}
@@ -1000,6 +1000,51 @@ enabled = true
 
 	if len(loadedCfg.Targets) != 0 {
 		t.Errorf("REGRESSION: Expected 0 targets, got %d", len(loadedCfg.Targets))
+	}
+}
+
+func TestLoadSave_TargetGlobalPaths(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.toml")
+
+	loader := &Loader{
+		scope:      ScopeGlobal,
+		globalPath: configPath,
+	}
+
+	cfg := &Config{
+		Targets: map[string]Target{
+			"codex": {
+				GlobalPath: "/legacy/global",
+				GlobalPaths: map[string]string{
+					"default": "/named/default",
+					"shared":  "/named/shared",
+				},
+				LocalPath: "/local/skills",
+				Enabled:   true,
+			},
+		},
+		Repos: make(map[string]RepoInfo),
+	}
+
+	if err := loader.Save(cfg, false); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	loaded, err := loader.Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	target := loaded.Targets["codex"]
+	if target.GlobalPath != "/legacy/global" {
+		t.Fatalf("GlobalPath = %q, want %q", target.GlobalPath, "/legacy/global")
+	}
+	if target.GlobalPaths["default"] != "/named/default" {
+		t.Fatalf("GlobalPaths[default] = %q, want %q", target.GlobalPaths["default"], "/named/default")
+	}
+	if target.GlobalPaths["shared"] != "/named/shared" {
+		t.Fatalf("GlobalPaths[shared] = %q, want %q", target.GlobalPaths["shared"], "/named/shared")
 	}
 }
 

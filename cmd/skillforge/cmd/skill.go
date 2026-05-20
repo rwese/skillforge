@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/rwese/skillforge/internal/config"
@@ -226,6 +227,35 @@ type InstallPath struct {
 	Label string // e.g., "pi (global)", "pi (local)"
 }
 
+func resolvedGlobalPaths(target config.Target) map[string]string {
+	paths := make(map[string]string)
+	for name, path := range target.GlobalPaths {
+		if path != "" {
+			paths[name] = path
+		}
+	}
+	if len(paths) == 0 && target.GlobalPath != "" {
+		paths["default"] = target.GlobalPath
+	}
+	return paths
+}
+
+func appendGlobalInstallPaths(paths []InstallPath, targetName string, target config.Target) []InstallPath {
+	globalPaths := resolvedGlobalPaths(target)
+	names := make([]string, 0, len(globalPaths))
+	for name := range globalPaths {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		paths = append(paths, InstallPath{
+			Path:  config.ExpandPath(globalPaths[name]),
+			Label: fmt.Sprintf("%s (global:%s)", targetName, name),
+		})
+	}
+	return paths
+}
+
 // getInstallPaths returns paths to install skills to based on target and scope flags.
 // Default is local scope. Use -s global for global targets, -s local for local targets.
 func getInstallPaths(targetName, scope string) ([]InstallPath, error) {
@@ -250,10 +280,7 @@ func getInstallPaths(targetName, scope string) ([]InstallPath, error) {
 		// Check global targets
 		if includeGlobal {
 			if target, ok := globalCfg.Targets[targetName]; ok && target.Enabled {
-				paths = append(paths, InstallPath{
-					Path:  config.ExpandPath(target.GlobalPath),
-					Label: fmt.Sprintf("%s (global)", targetName),
-				})
+				paths = appendGlobalInstallPaths(paths, targetName, target)
 				found = true
 			}
 		}
@@ -279,10 +306,7 @@ func getInstallPaths(targetName, scope string) ([]InstallPath, error) {
 				if !target.Enabled {
 					continue
 				}
-				paths = append(paths, InstallPath{
-					Path:  config.ExpandPath(target.GlobalPath),
-					Label: fmt.Sprintf("%s (global)", name),
-				})
+				paths = appendGlobalInstallPaths(paths, name, target)
 			}
 		}
 
@@ -371,20 +395,28 @@ func runSkillList(cmd *cobra.Command, args []string) error {
 
 		// List global skills
 		if shouldUseScope(scopeFlag, "global") {
-			path := config.ExpandPath(target.GlobalPath)
-			skills, err := repo.ListInstalledSkills(path)
-			if err != nil {
-				if !os.IsNotExist(err) {
-					return fmt.Errorf("listing skills in %s (global): %w", targetName, err)
-				}
+			globalPaths := resolvedGlobalPaths(target)
+			globalNames := make([]string, 0, len(globalPaths))
+			for globalName := range globalPaths {
+				globalNames = append(globalNames, globalName)
 			}
-			for _, skill := range skills {
-				globalSkills = append(globalSkills, SkillOutput{
-					Name:   skill.Name,
-					Target: fmt.Sprintf("%s/global", targetName),
-					Repo:   repoResolver.Resolve(skill),
-					Source: skill.Source,
-				})
+			sort.Strings(globalNames)
+			for _, globalName := range globalNames {
+				path := config.ExpandPath(globalPaths[globalName])
+				skills, err := repo.ListInstalledSkills(path)
+				if err != nil {
+					if !os.IsNotExist(err) {
+						return fmt.Errorf("listing skills in %s (global:%s): %w", targetName, globalName, err)
+					}
+				}
+				for _, skill := range skills {
+					globalSkills = append(globalSkills, SkillOutput{
+						Name:   skill.Name,
+						Target: fmt.Sprintf("%s/global:%s", targetName, globalName),
+						Repo:   repoResolver.Resolve(skill),
+						Source: skill.Source,
+					})
+				}
 			}
 		}
 	}
@@ -592,6 +624,22 @@ type RemovePath struct {
 	Label string
 }
 
+func appendGlobalRemovePaths(paths []RemovePath, targetName string, target config.Target) []RemovePath {
+	globalPaths := resolvedGlobalPaths(target)
+	names := make([]string, 0, len(globalPaths))
+	for name := range globalPaths {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		paths = append(paths, RemovePath{
+			Path:  config.ExpandPath(globalPaths[name]),
+			Label: fmt.Sprintf("%s (global:%s)", targetName, name),
+		})
+	}
+	return paths
+}
+
 func getRemovePaths(targetName, scope string) []RemovePath {
 	globalCfg, err := loadConfigScope(config.ScopeGlobal)
 	if err != nil {
@@ -611,10 +659,7 @@ func getRemovePaths(targetName, scope string) []RemovePath {
 		// Specific target
 		if includeGlobal {
 			if target, ok := globalCfg.Targets[targetName]; ok && target.Enabled {
-				paths = append(paths, RemovePath{
-					Path:  config.ExpandPath(target.GlobalPath),
-					Label: fmt.Sprintf("%s (global)", targetName),
-				})
+				paths = appendGlobalRemovePaths(paths, targetName, target)
 			}
 		}
 
@@ -633,10 +678,7 @@ func getRemovePaths(targetName, scope string) []RemovePath {
 				if !target.Enabled {
 					continue
 				}
-				paths = append(paths, RemovePath{
-					Path:  config.ExpandPath(target.GlobalPath),
-					Label: fmt.Sprintf("%s (global)", name),
-				})
+				paths = appendGlobalRemovePaths(paths, name, target)
 			}
 		}
 

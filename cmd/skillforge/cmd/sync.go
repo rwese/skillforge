@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 
 	"github.com/rwese/skillforge/internal/config"
 	"github.com/rwese/skillforge/internal/repo"
@@ -17,69 +18,73 @@ var syncCmd = &cobra.Command{
 	Long: `Sync repositories and install missing skills.
 
 This command performs up to two operations:
-1. Updates all cached repositories (repo update)
-2. Syncs skills across agents (agent sync) - installs missing skills as symlinks
+1. Checks global targets for missing skills
+2. With --fix, updates cached repositories and installs missing skills as symlinks
 
 Skills are always linked to the latest version from cached repositories.
-Use --check to see what would be done without making changes.
+By default, sync is read-only. Use --fix to apply changes.
 Use --skip-agent-sync to skip the agent synchronization step.`,
 	RunE: runSync,
 }
 
 var (
 	syncAgentFlag     string
-	syncScopeFlag     string
 	skipAgentSyncFlag bool
+	syncFixFlag       bool
 )
 
 func init() {
 	rootCmd.AddCommand(syncCmd)
-	syncCmd.Flags().BoolVarP(&checkFlag, "check", "c", false, "Check for updates without applying")
+	syncCmd.Flags().BoolVar(&syncFixFlag, "fix", false, "Apply repository updates and missing skill links")
 	syncCmd.Flags().StringVarP(&syncAgentFlag, "agent", "a", "", "Sync only specific agent (pi, codex, claude)")
-	syncCmd.Flags().StringVarP(&syncScopeFlag, "scope", "s", "local", "Scope: global or local")
 	syncCmd.Flags().BoolVarP(&skipAgentSyncFlag, "skip-agent-sync", "", false, "Skip agent synchronization step")
 }
 
 func runSync(cmd *cobra.Command, args []string) error {
-	// Step 1: Sync repositories (load from both local and global configs)
-	fmt.Println("=== Syncing repositories ===")
-	
+	if err := rejectSyncScopeFlag(cmd); err != nil {
+		return err
+	}
+
 	// Load repos from all configs for sync
 	allRepos, cacheConfig, err := config.NewLoader(config.ScopeLocal).LoadAllRepos()
 	if err != nil {
 		return fmt.Errorf("loading repos: %w", err)
 	}
-	
 
+	if syncFixFlag {
+		fmt.Println("=== Syncing repositories ===")
+		cache := repo.NewCache(config.ExpandPath(cacheConfig.Path))
 
-	cache := repo.NewCache(config.ExpandPath(cacheConfig.Path))
-
-	// Sync each repository
-	for name, info := range allRepos {
-		if !cache.Exists(name) {
-			// Clone if not in cache
-			spinner := NewSpinner(fmt.Sprintf("Cloning %s (branch: %s)...", info.URL, info.Branch))
-			spinner.Start()
-			if err := cache.Clone(info.URL, info.Branch); err != nil {
+		// Sync each repository
+		for name, info := range allRepos {
+			if !cache.Exists(name) {
+				// Clone if not in cache
+				spinner := NewSpinner(fmt.Sprintf("Cloning %s (branch: %s)...", info.URL, info.Branch))
+				spinner.Start()
+				if err := cache.Clone(info.URL, info.Branch); err != nil {
+					spinner.Stop()
+					fmt.Printf("  ! Failed to clone %s: %v\n", name, err)
+					continue
+				}
 				spinner.Stop()
-				fmt.Printf("  ! Failed to clone %s: %v\n", name, err)
+				fmt.Printf("  ✓ Cloned %s\n", name)
 				continue
 			}
+
+			// Pull updates for existing repos
+			spinner := NewSpinner(fmt.Sprintf("Updating %s ", name))
+			spinner.Start()
+			_ = cache.Pull(name) // Ignore pull errors
 			spinner.Stop()
-			fmt.Printf("  ✓ Cloned %s\n", name)
-			continue
+			fmt.Printf("  ✓ Updated %s\n", name)
 		}
 
-		// Pull updates for existing repos
-		spinner := NewSpinner(fmt.Sprintf("Updating %s ", name))
-		spinner.Start()
-		_ = cache.Pull(name) // Ignore pull errors
-		spinner.Stop()
-		fmt.Printf("  ✓ Updated %s\n", name)
-	}
-
-	if len(allRepos) == 0 {
-		fmt.Println("  No repositories configured. Run 'skillforge repo add <url>' to add one.")
+		if len(allRepos) == 0 {
+			fmt.Println("  No repositories configured. Run 'skillforge repo add <url>' to add one.")
+		}
+	} else {
+		fmt.Println("=== Checking repositories ===")
+		fmt.Printf("  %d repositories configured. Use --fix to update cached repositories.\n", len(allRepos))
 	}
 
 	// Step 2: Sync across agents (install missing skills as symlinks)
@@ -90,6 +95,13 @@ func runSync(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	return nil
+}
+
+func rejectSyncScopeFlag(cmd *cobra.Command) error {
+	if scopeFlag != "" && scopeFlag != "local" {
+		return fmt.Errorf("sync does not support --scope")
+	}
 	return nil
 }
 
@@ -104,26 +116,13 @@ func runAgentSync(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Load local config and repos (only if local config exists)
-	localLoader := config.NewLoader(config.ScopeLocal)
-	localCfg, err := localLoader.Load()
-	localConfigExists := config.DetectLocalPath() != ""
-
-	// Build catalogs: global repos → global catalog, local repos → local catalog
+	// Build catalog from global repos.
 	globalCatalog, err := buildSkillCatalog(globalCfg)
 	if err != nil {
 		return fmt.Errorf("building global skill catalog: %w", err)
 	}
 
-	var localCatalog map[string]SkillInfo
-	if localConfigExists {
-		localCatalog, err = buildSkillCatalog(localCfg)
-		if err != nil {
-			return fmt.Errorf("building local skill catalog: %w", err)
-		}
-	}
-
-	if len(globalCatalog) == 0 && len(localCatalog) == 0 {
+	if len(globalCatalog) == 0 {
 		fmt.Println("  No skills found in cached repositories.")
 		return nil
 	}
@@ -132,13 +131,10 @@ func runAgentSync(cmd *cobra.Command, args []string) error {
 	if len(globalCatalog) > 0 {
 		fmt.Printf("  Found %d global skills\n", len(globalCatalog))
 	}
-	if localCatalog != nil && len(localCatalog) > 0 {
-		fmt.Printf("  Found %d local skills\n", len(localCatalog))
-	}
 
 	// Collect installed skills per target
-	installedGlobal := make(map[string]map[string]bool) // key: "target"
-	installedLocal := make(map[string]map[string]bool)
+	installedGlobal := make(map[string]map[string]bool) // key: "target/global:name"
+	globalInstallPaths := make(map[string]string)
 
 	// Process global targets
 	for targetName, target := range globalCfg.Targets {
@@ -148,44 +144,29 @@ func runAgentSync(cmd *cobra.Command, args []string) error {
 		if !target.Enabled {
 			continue
 		}
-		if syncScopeFlag == "local" {
-			continue
+		globalPaths := resolvedGlobalPaths(target)
+		globalNames := make([]string, 0, len(globalPaths))
+		for globalName := range globalPaths {
+			globalNames = append(globalNames, globalName)
 		}
-
-		path := config.ExpandPath(target.GlobalPath)
-		if skills := collectSkillNames(path); skills != nil {
-			installedGlobal[targetName] = skills
-		}
-	}
-
-	// Process local targets (only if local config exists)
-	if localConfigExists && localCfg != nil {
-		for targetName, target := range localCfg.Targets {
-			if syncAgentFlag != "" && syncAgentFlag != targetName {
-				continue
-			}
-			if !target.Enabled {
-				continue
-			}
-			if syncScopeFlag == "global" {
-				continue
-			}
-
-			path := config.ExpandPath(target.LocalPath)
+		sort.Strings(globalNames)
+		for _, globalName := range globalNames {
+			label := fmt.Sprintf("%s/global:%s", targetName, globalName)
+			path := config.ExpandPath(globalPaths[globalName])
 			if skills := collectSkillNames(path); skills != nil {
-				installedLocal[targetName] = skills
+				installedGlobal[label] = skills
+				globalInstallPaths[label] = path
 			}
 		}
 	}
 
-	if len(installedGlobal) == 0 && len(installedLocal) == 0 {
-		fmt.Println("  No matching agent scopes to sync.")
+	if len(installedGlobal) == 0 {
+		fmt.Println("  No matching global targets to sync.")
 		return nil
 	}
 
-	// Find missing skills: global repos → global scope, local repos → local scope
+	// Find missing skills across global targets.
 	missingGlobal := findMissingSkills(installedGlobal, globalCatalog)
-	missingLocal := findMissingSkills(installedLocal, localCatalog)
 
 	// Check if there's anything to sync
 	hasGlobalMissing := false
@@ -195,16 +176,8 @@ func runAgentSync(cmd *cobra.Command, args []string) error {
 			break
 		}
 	}
-	hasLocalMissing := false
-	for _, skills := range missingLocal {
-		if len(skills) > 0 {
-			hasLocalMissing = true
-			break
-		}
-	}
-
-	if !hasGlobalMissing && !hasLocalMissing {
-		fmt.Println("  All agents have the same skills installed.")
+	if !hasGlobalMissing {
+		fmt.Println("  All global targets have the same skills installed.")
 		return nil
 	}
 
@@ -220,23 +193,10 @@ func runAgentSync(cmd *cobra.Command, args []string) error {
 			}
 		}
 	}
-	if hasLocalMissing {
-		fmt.Println("  --- Local scope ---")
-		for target, skills := range missingLocal {
-			if len(skills) > 0 {
-				fmt.Printf("    %s is missing %d skill(s):\n", target, len(skills))
-				for _, skillName := range skills {
-					fmt.Printf("      - %s\n", skillName)
-				}
-			}
-		}
-	}
-
 	// Dry-run mode
 	totalGlobalMissing := countMissing(missingGlobal)
-	totalLocalMissing := countMissing(missingLocal)
-	if checkFlag || dryRunFlag {
-		fmt.Printf("\n  [DRY-RUN] Would link %d global, %d local skill(s)\n", totalGlobalMissing, totalLocalMissing)
+	if !syncFixFlag || dryRunFlag {
+		fmt.Printf("\n  [CHECK] Would link %d global skill(s). Use --fix to apply.\n", totalGlobalMissing)
 		return nil
 	}
 
@@ -245,35 +205,17 @@ func runAgentSync(cmd *cobra.Command, args []string) error {
 	failed := 0
 
 	// Install global missing skills to global targets
-	for targetName, skills := range missingGlobal {
+	for targetLabel, skills := range missingGlobal {
 		if len(skills) == 0 {
 			continue
 		}
 
-		target, exists := globalCfg.Targets[targetName]
+		installPath, exists := globalInstallPaths[targetLabel]
 		if !exists {
 			continue
 		}
 
-		installPath := config.ExpandPath(target.GlobalPath)
-		linkMissingSkills(targetName, "global", skills, globalCatalog, installPath, &installed, &failed)
-	}
-
-	// Install local missing skills to local targets (only if local config exists)
-	if localConfigExists && localCfg != nil {
-		for targetName, skills := range missingLocal {
-			if len(skills) == 0 {
-				continue
-			}
-
-			target, exists := localCfg.Targets[targetName]
-			if !exists {
-				continue
-			}
-
-			installPath := config.ExpandPath(target.LocalPath)
-			linkMissingSkills(targetName, "local", skills, localCatalog, installPath, &installed, &failed)
-		}
+		linkMissingSkills(targetLabel, "", skills, globalCatalog, installPath, &installed, &failed)
 	}
 
 	fmt.Printf("\n  ✓ Agent sync complete: %d linked, %d failed\n", installed, failed)
@@ -301,14 +243,19 @@ func linkMissingSkills(agentName, scope string, skillNames []string, catalog map
 		targetPath := filepath.Join(installPath, skillName)
 
 		// Check if already exists
+		targetLabel := agentName
+		if scope != "" {
+			targetLabel = fmt.Sprintf("%s/%s", agentName, scope)
+		}
+
 		if _, err := os.Lstat(targetPath); err == nil {
 			if verboseFlag {
-				fmt.Printf("    ! %s already exists in %s/%s, skipping\n", skillName, agentName, scope)
+				fmt.Printf("    ! %s already exists in %s, skipping\n", skillName, targetLabel)
 			}
 			continue
 		}
 
-		fmt.Printf("    Linking %s to %s/%s...\n", skillName, agentName, scope)
+		fmt.Printf("    Linking %s to %s...\n", skillName, targetLabel)
 
 		if err := repo.LinkSkill(skillInfo.Skill, targetPath); err != nil {
 			fmt.Printf("      ! Failed to link %s: %v\n", skillName, err)

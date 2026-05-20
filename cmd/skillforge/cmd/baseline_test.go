@@ -241,6 +241,44 @@ func TestTarget_AddDuplicate(t *testing.T) {
 	}
 }
 
+func TestTarget_GlobalAddRemove(t *testing.T) {
+	env := newBaselineEnv(t)
+	env.chdir()
+
+	env.run("target", "add", "codex", "/tmp/global", "/tmp/local", "-e", "-s", "global")
+
+	_, stderr, code := env.run("target", "global", "add", "codex", "shared", "/tmp/shared", "-s", "global")
+	if code != 0 {
+		t.Fatalf("target global add failed: %s", stderr)
+	}
+
+	stdout, _, _ := env.run("target", "list", "-s", "global", "-f", "json")
+	var targets []TargetOutput
+	if err := json.Unmarshal([]byte(stdout), &targets); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if len(targets) != 1 {
+		t.Fatalf("expected 1 target, got %d: %s", len(targets), stdout)
+	}
+	if targets[0].GlobalPaths["shared"] != "/tmp/shared" {
+		t.Fatalf("expected shared global path, got %#v", targets[0].GlobalPaths)
+	}
+
+	_, stderr, code = env.run("target", "global", "remove", "codex", "shared", "-s", "global")
+	if code != 0 {
+		t.Fatalf("target global remove failed: %s", stderr)
+	}
+
+	stdout, _, _ = env.run("target", "list", "-s", "global", "-f", "json")
+	targets = nil
+	if err := json.Unmarshal([]byte(stdout), &targets); err != nil {
+		t.Fatalf("invalid JSON after remove: %v", err)
+	}
+	if len(targets[0].GlobalPaths) != 0 {
+		t.Fatalf("expected global paths removed, got %#v", targets[0].GlobalPaths)
+	}
+}
+
 // ============================================================
 // REPO TESTS - Local Scope
 // ============================================================

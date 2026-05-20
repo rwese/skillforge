@@ -67,10 +67,11 @@ var cellStyle = lipgloss.NewStyle().
 
 // TargetOutput represents a target for JSON output.
 type TargetOutput struct {
-	Name       string `json:"name"`
-	GlobalPath string `json:"globalPath"`
-	LocalPath  string `json:"localPath"`
-	Enabled    bool   `json:"enabled"`
+	Name        string            `json:"name"`
+	GlobalPath  string            `json:"globalPath"`
+	GlobalPaths map[string]string `json:"globalPaths,omitempty"`
+	LocalPath   string            `json:"localPath"`
+	Enabled     bool              `json:"enabled"`
 }
 
 // --- Skill Output Types ---
@@ -136,8 +137,9 @@ func formatTargetTable(targets []TargetOutput) string {
 		if len(t.Name) > nameWidth {
 			nameWidth = len(t.Name)
 		}
-		if len(t.GlobalPath) > globalPathWidth {
-			globalPathWidth = len(t.GlobalPath)
+		globalPath := formatGlobalPaths(t)
+		if len(globalPath) > globalPathWidth {
+			globalPathWidth = len(globalPath)
 		}
 		if len(t.LocalPath) > localPathWidth {
 			localPathWidth = len(t.LocalPath)
@@ -170,7 +172,7 @@ func formatTargetTable(targets []TargetOutput) string {
 			statusColor = Success
 		}
 
-		globalPath := t.GlobalPath
+		globalPath := formatGlobalPaths(t)
 		localPath := t.LocalPath
 
 		row := fmt.Sprintf("%-*s  %-*s  %-*s  %s",
@@ -189,6 +191,24 @@ func formatTargetTable(targets []TargetOutput) string {
 	}
 
 	return b.String()
+}
+
+func formatGlobalPaths(t TargetOutput) string {
+	if len(t.GlobalPaths) == 0 {
+		return t.GlobalPath
+	}
+
+	keys := make([]string, 0, len(t.GlobalPaths))
+	for name := range t.GlobalPaths {
+		keys = append(keys, name)
+	}
+	sort.Strings(keys)
+
+	parts := make([]string, 0, len(keys))
+	for _, name := range keys {
+		parts = append(parts, fmt.Sprintf("%s=%s", name, t.GlobalPaths[name]))
+	}
+	return strings.Join(parts, ", ")
 }
 
 // formatTargetCompact formats targets in compact format.

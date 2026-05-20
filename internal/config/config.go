@@ -12,7 +12,7 @@ import (
 
 // Config represents the main configuration structure.
 type Config struct {
-	Cache   CacheConfig          `toml:"cache"`
+	Cache   CacheConfig         `toml:"cache"`
 	Targets map[string]Target   `toml:"targets"`
 	Repos   map[string]RepoInfo `toml:"repos"`
 }
@@ -26,10 +26,11 @@ type CacheConfig struct {
 // GlobalPath is used when installing with -s global (global agent).
 // LocalPath is used when installing with -s local (local/project agent).
 type Target struct {
-	Name       string `toml:"name"`
-	GlobalPath string `toml:"globalPath"`
-	LocalPath  string `toml:"localPath"`
-	Enabled    bool   `toml:"enabled"`
+	Name        string            `toml:"name"`
+	GlobalPath  string            `toml:"globalPath"`
+	GlobalPaths map[string]string `toml:"globalPaths"`
+	LocalPath   string            `toml:"localPath"`
+	Enabled     bool              `toml:"enabled"`
 }
 
 // RepoInfo tracks a cached repository.

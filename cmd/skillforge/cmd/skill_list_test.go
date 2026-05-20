@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -30,6 +31,92 @@ func TestFormatSkillListIncludesRepo(t *testing.T) {
 	compact := formatSkillCompact(skills)
 	if !strings.Contains(compact, "repo=agents-grimoire") {
 		t.Fatalf("formatSkillCompact() missing repo value: %s", compact)
+	}
+}
+
+func TestResolvedGlobalPathsLegacyGlobalPath(t *testing.T) {
+	got := resolvedGlobalPaths(config.Target{GlobalPath: "/legacy/global"})
+	want := map[string]string{"default": "/legacy/global"}
+
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("resolvedGlobalPaths() = %#v, want %#v", got, want)
+	}
+}
+
+func TestResolvedGlobalPathsNamedGlobalPaths(t *testing.T) {
+	got := resolvedGlobalPaths(config.Target{
+		GlobalPath: "/legacy/global",
+		GlobalPaths: map[string]string{
+			"default": "/named/default",
+			"shared":  "/named/shared",
+		},
+	})
+	want := map[string]string{
+		"default": "/named/default",
+		"shared":  "/named/shared",
+	}
+
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("resolvedGlobalPaths() = %#v, want %#v", got, want)
+	}
+}
+
+func TestAppendGlobalInstallPathsUsesAllNamedDirectories(t *testing.T) {
+	target := config.Target{
+		GlobalPaths: map[string]string{
+			"default": "/named/default",
+			"shared":  "/named/shared",
+		},
+	}
+
+	got := appendGlobalInstallPaths(nil, "codex", target)
+	seen := map[string]string{}
+	for _, path := range got {
+		seen[path.Label] = path.Path
+	}
+
+	if seen["codex (global:default)"] != "/named/default" {
+		t.Fatalf("default install path missing from %#v", got)
+	}
+	if seen["codex (global:shared)"] != "/named/shared" {
+		t.Fatalf("shared install path missing from %#v", got)
+	}
+}
+
+func TestAppendGlobalRemovePathsUsesAllNamedDirectories(t *testing.T) {
+	target := config.Target{
+		GlobalPaths: map[string]string{
+			"default": "/named/default",
+			"shared":  "/named/shared",
+		},
+	}
+
+	got := appendGlobalRemovePaths(nil, "codex", target)
+	seen := map[string]string{}
+	for _, path := range got {
+		seen[path.Label] = path.Path
+	}
+
+	if seen["codex (global:default)"] != "/named/default" {
+		t.Fatalf("default remove path missing from %#v", got)
+	}
+	if seen["codex (global:shared)"] != "/named/shared" {
+		t.Fatalf("shared remove path missing from %#v", got)
+	}
+}
+
+func TestFormatSkillListMultipleGlobalLabels(t *testing.T) {
+	skills := []SkillOutput{
+		{Name: "docker", Target: "codex/global:default", Repo: "agents-grimoire"},
+		{Name: "docker", Target: "codex/global:shared", Repo: "agents-grimoire"},
+	}
+
+	table := formatSkillTable(skills)
+	if !strings.Contains(table, "codex/global:default") {
+		t.Fatalf("formatSkillTable() missing default global label:\n%s", table)
+	}
+	if !strings.Contains(table, "codex/global:shared") {
+		t.Fatalf("formatSkillTable() missing shared global label:\n%s", table)
 	}
 }
 
