@@ -256,6 +256,24 @@ func appendGlobalInstallPaths(paths []InstallPath, targetName string, target con
 	return paths
 }
 
+func resolveLocalSkillDir(localPath, gitRoot string) string {
+	expanded := config.ExpandPath(localPath)
+	if filepath.IsAbs(expanded) {
+		return filepath.Clean(expanded)
+	}
+	return filepath.Clean(filepath.Join(gitRoot, expanded))
+}
+
+func appendLocalInstallPath(paths []InstallPath, targetName string, target config.Target, gitRoot string) []InstallPath {
+	if !target.Enabled || target.LocalPath == "" || gitRoot == "" {
+		return paths
+	}
+	return append(paths, InstallPath{
+		Path:  resolveLocalSkillDir(target.LocalPath, gitRoot),
+		Label: fmt.Sprintf("%s (local)", targetName),
+	})
+}
+
 // getInstallPaths returns paths to install skills to based on target and scope flags.
 // Default is local scope. Use -s global for global targets, -s local for local targets.
 func getInstallPaths(targetName, scope string) ([]InstallPath, error) {
@@ -266,6 +284,7 @@ func getInstallPaths(targetName, scope string) ([]InstallPath, error) {
 
 	localCfg, err := loadConfigScope(config.ScopeLocal)
 	localConfigExists := config.DetectLocalPath() != ""
+	localGitRoot := config.DetectGitRoot()
 
 	var paths []InstallPath
 
@@ -286,12 +305,9 @@ func getInstallPaths(targetName, scope string) ([]InstallPath, error) {
 		}
 
 		// Check local targets
-		if includeLocal && localConfigExists && localCfg != nil {
-			if target, ok := localCfg.Targets[targetName]; ok && target.Enabled {
-				paths = append(paths, InstallPath{
-					Path:  config.ExpandPath(target.LocalPath),
-					Label: fmt.Sprintf("%s (local)", targetName),
-				})
+		if includeLocal && localConfigExists && localGitRoot != "" && localCfg != nil {
+			if target, ok := localCfg.Targets[targetName]; ok && target.Enabled && target.LocalPath != "" {
+				paths = appendLocalInstallPath(paths, targetName, target, localGitRoot)
 				found = true
 			}
 		}
@@ -311,27 +327,10 @@ func getInstallPaths(targetName, scope string) ([]InstallPath, error) {
 		}
 
 		if includeLocal {
-			if localConfigExists && localCfg != nil && len(localCfg.Targets) > 0 {
+			if localConfigExists && localGitRoot != "" && localCfg != nil && len(localCfg.Targets) > 0 {
 				// Use targets from local config
 				for name, target := range localCfg.Targets {
-					if !target.Enabled || target.LocalPath == "" {
-						continue
-					}
-					paths = append(paths, InstallPath{
-						Path:  config.ExpandPath(target.LocalPath),
-						Label: fmt.Sprintf("%s (local)", name),
-					})
-				}
-			} else {
-				// Fall back to global targets that have LocalPath defined
-				for name, target := range globalCfg.Targets {
-					if !target.Enabled || target.LocalPath == "" {
-						continue
-					}
-					paths = append(paths, InstallPath{
-						Path:  config.ExpandPath(target.LocalPath),
-						Label: fmt.Sprintf("%s (local)", name),
-					})
+					paths = appendLocalInstallPath(paths, name, target, localGitRoot)
 				}
 			}
 		}

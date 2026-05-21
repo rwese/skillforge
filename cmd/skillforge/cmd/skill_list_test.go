@@ -105,6 +105,22 @@ func TestAppendGlobalRemovePathsUsesAllNamedDirectories(t *testing.T) {
 	}
 }
 
+func TestResolveLocalSkillDirUsesGitRootForRelativePaths(t *testing.T) {
+	got := resolveLocalSkillDir(".codex/skills", "/repo/root")
+	want := filepath.Join("/repo/root", ".codex", "skills")
+
+	if got != want {
+		t.Fatalf("resolveLocalSkillDir() = %q, want %q", got, want)
+	}
+}
+
+func TestResolveLocalSkillDirKeepsAbsolutePaths(t *testing.T) {
+	got := resolveLocalSkillDir("/absolute/skills", "/repo/root")
+	if got != "/absolute/skills" {
+		t.Fatalf("resolveLocalSkillDir() = %q, want %q", got, "/absolute/skills")
+	}
+}
+
 func TestFormatSkillListMultipleGlobalLabels(t *testing.T) {
 	skills := []SkillOutput{
 		{Name: "docker", Target: "codex/global:default", Repo: "agents-grimoire"},

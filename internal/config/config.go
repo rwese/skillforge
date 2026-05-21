@@ -84,6 +84,21 @@ func (l *Loader) GlobalPath() string {
 	return l.globalPath
 }
 
+// DetectGitRoot returns the git root for cwd, or empty when cwd is not in a git repo.
+func DetectGitRoot() string {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+
+	cmd := exec.Command("git", "rev-parse", "--show-toplevel")
+	cmd.Dir = cwd
+	if out, err := cmd.Output(); err == nil {
+		return strings.TrimSpace(string(out))
+	}
+	return ""
+}
+
 // DetectLocalPath finds the local config path by searching from cwd to git root.
 func DetectLocalPath() string {
 	cwd, err := os.Getwd()
@@ -92,11 +107,9 @@ func DetectLocalPath() string {
 	}
 
 	// Find git root
-	gitRoot := cwd
-	cmd := exec.Command("git", "rev-parse", "--show-toplevel")
-	cmd.Dir = cwd
-	if out, err := cmd.Output(); err == nil {
-		gitRoot = strings.TrimSpace(string(out))
+	gitRoot := DetectGitRoot()
+	if gitRoot == "" {
+		gitRoot = cwd
 	}
 
 	// Search from cwd to git root

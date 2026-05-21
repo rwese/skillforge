@@ -241,6 +241,55 @@ func TestTarget_AddDuplicate(t *testing.T) {
 	}
 }
 
+func TestSkillInstallLocalDoesNotFallbackWithoutGitRoot(t *testing.T) {
+	env := newBaselineEnv(t)
+	env.chdir()
+
+	globalCfg := filepath.Join(env.homeDir, ".config", "skillforge", "config.toml")
+	cfg := `[targets.pi]
+globalPath = "/tmp/global"
+localPath = ".pi/skills"
+enabled = true
+`
+	if err := os.WriteFile(globalCfg, []byte(cfg), 0644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	_, stderr, code := env.run("skill", "install", "docker", "--dry-run")
+	if code == 0 {
+		t.Fatal("expected local install to fail outside git root")
+	}
+	if !strings.Contains(stderr, "no install paths found") {
+		t.Fatalf("expected no install paths error, got: %s", stderr)
+	}
+}
+
+func TestSkillInstallLocalConfigRequiresGitRoot(t *testing.T) {
+	env := newBaselineEnv(t)
+	env.chdir()
+
+	localDir := filepath.Join(env.tmpDir, ".skillforge")
+	if err := os.MkdirAll(localDir, 0755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	cfg := `[targets.pi]
+globalPath = "/tmp/global"
+localPath = ".pi/skills"
+enabled = true
+`
+	if err := os.WriteFile(filepath.Join(localDir, "config.toml"), []byte(cfg), 0644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	_, stderr, code := env.run("skill", "install", "docker", "--dry-run")
+	if code == 0 {
+		t.Fatal("expected local install to fail outside git root")
+	}
+	if !strings.Contains(stderr, "no install paths found") {
+		t.Fatalf("expected no install paths error, got: %s", stderr)
+	}
+}
+
 func TestTarget_GlobalAddRemove(t *testing.T) {
 	env := newBaselineEnv(t)
 	env.chdir()

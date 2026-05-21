@@ -1,70 +1,82 @@
 # skillforge Agent Instructions
 
-CLI tool for managing agent skills from git repositories.
+Go CLI for managing agent skills from git repositories.
 
 ## Commands
 
 ```bash
 go build -o skillforge ./cmd/skillforge/  # Build binary
 go test ./...                              # Run tests
+go test ./... -cover                       # Coverage
 go mod tidy                                # Update dependencies
+./skillforge sync                          # Check global target sync
+./skillforge sync --fix                    # Update repos and fix global target sync
 ```
 
 ## Structure
 
-```
+```text
 skillforge/
-├── cmd/skillforge/     # CLI commands (cobra)
+├── cmd/skillforge/      # cobra CLI commands and command tests
 ├── internal/
-│   ├── config/        # Config loading + scope detection
-│   ├── repo/          # Git cache, skill discovery, grimoire
-│   └── search/        # Simple keyword search
-├── pkg/grimoire/       # Grimoire types
-└── docs/prds/         # Project documentation
+│   ├── agents/          # agents.toml setup/detection helpers
+│   ├── config/          # config.toml loading, saving, scope detection
+│   ├── repo/            # git cache, skill discovery, install/link metadata
+│   └── search/          # simple keyword search
+├── pkg/grimoire/        # public grimoire metadata types
+└── docs/                # PRDs, plans, reviews
 ```
 
 ## Code Style
 
-- Go 1.21+
-- cobra for CLI structure
-- TOML for config
-- Simple keyword search (no external search libraries)
-- No external git libraries (exec git)
-
-## Testing
-
-```bash
-go test ./... -v    # Run with verbose output
-go test ./... -cover # With coverage
-```
+- Go 1.21+.
+- cobra for CLI structure.
+- TOML for config.
+- Use `os/exec` for git; do not add external git libraries.
+- Keep search simple; do not add external search libraries.
+- Prefer backwards-compatible config changes.
 
 ## Key Implementation Notes
 
-- **Skill discovery**: Checks `skills/` and `.agents/skills/` subdirectories in repos
-- **Config scope**: `--local` flag creates local config if it doesn't exist
-- **Config merging**: Local save merges with existing to preserve global data
+- Skill discovery checks `skills/` and `.agents/skills/` in cached repos.
+- Active install/list/remove behavior uses `config.Target` from `config.toml`.
+- `target.globalPath` is the legacy global directory.
+- `target.globalPaths` is a named map of additional global directories.
+- If `globalPaths` is empty, treat `globalPath` as named `default`.
+- `sync` is global-only and read-only by default; `--fix` applies repo updates and missing skill links.
+- `setup` uses `internal/agents` and `agents.toml`; do not assume that path drives `skill` commands.
+
+## Testing
+
+- Run `go test ./...` before committing.
+- Run `go build -o skillforge ./cmd/skillforge/` before committing.
+- Manually exercise CLI behavior after command-signature, config, install, remove, or sync changes.
+- Add regression tests before fixing bugs.
 
 ## Git Workflow
 
-- Branches: `feat/<name>`, `fix/<name>`
-- Commits: Conventional Commits (see skill:git-conventional-commits)
-- PRs: squash-merge to main
-
----
+- Branches: `feat/<name>`, `fix/<name>`.
+- Commits: Conventional Commits.
+- PRs: squash-merge to `main`.
 
 ## Boundaries
 
 **ALWAYS**
-- Run `go build` before committing
-- Test CLI commands manually after major changes
-- Update TODO.md when completing tasks
-- Build and test after config-related changes
+
+- Use absolute paths in agent responses.
+- Respect pre-commit hooks and fix their root causes.
+- Build and test after config-related changes.
+- Run `go build` before committing.
 
 **USUALLY / ASK FIRST**
-- Add new dependencies
-- Modify config format
-- Change command signatures
+
+- Add new dependencies.
+- Modify config format.
+- Change command signatures.
+- Delete files.
 
 **NEVER**
-- Commit secrets or API keys
-- Modify shared config without approval
+
+- Commit secrets or API keys.
+- Modify shared user config without approval.
+- Bypass or disable quality gates.
