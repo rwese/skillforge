@@ -2,15 +2,28 @@ package cmd
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/rwese/skillforge/internal/config"
 	"github.com/rwese/skillforge/internal/repo"
 	"github.com/rwese/skillforge/pkg/grimoire"
 	"github.com/spf13/cobra"
 )
+
+type syncRepoCache interface {
+	Exists(name string) bool
+	Clone(url, branch string) error
+	Fetch(name string) error
+	Pull(name string) error
+	GetCommit(name string) (string, error)
+	GetRemoteCommit(name, branch string) (string, error)
+	GetIncomingLog(name, branch string) (string, error)
+	GetIncomingNameStatus(name, branch string) (string, error)
+}
 
 var syncCmd = &cobra.Command{
 	Use:   "sync",
@@ -19,25 +32,29 @@ var syncCmd = &cobra.Command{
 
 This command performs up to two operations:
 1. Checks global targets for missing skills
-2. With --fix, updates cached repositories and installs missing skills as symlinks
+2. With fix flags, updates cached repositories and installs missing skills as symlinks
 
 Skills are always linked to the latest version from cached repositories.
-By default, sync is read-only. Use --fix to apply changes.
-Use --skip-agent-sync to skip the agent synchronization step.`,
+By default, sync is read-only. Use --fix-sync-repos to update cached repositories,
+--fix-outofsync-agents to link missing skills, or --fix-all for both.`,
 	RunE: runSync,
 }
 
 var (
-	syncAgentFlag     string
-	skipAgentSyncFlag bool
-	syncFixFlag       bool
+	syncAgentFlag              string
+	syncFixOutofsyncAgentsFlag bool
+	syncFixReposFlag           bool
+	syncFixAllFlag             bool
+	syncDiffFlag               bool
 )
 
 func init() {
 	rootCmd.AddCommand(syncCmd)
-	syncCmd.Flags().BoolVar(&syncFixFlag, "fix", false, "Apply repository updates and missing skill links")
+	syncCmd.Flags().BoolVar(&syncFixOutofsyncAgentsFlag, "fix-outofsync-agents", false, "Install missing skill links across configured agents")
+	syncCmd.Flags().BoolVar(&syncFixReposFlag, "fix-sync-repos", false, "Update cached repositories after checking remote changes")
+	syncCmd.Flags().BoolVar(&syncFixAllFlag, "fix-all", false, "Apply repository updates and missing agent skill links")
+	syncCmd.Flags().BoolVar(&syncDiffFlag, "diff", false, "Show incoming remote commit and file changes")
 	syncCmd.Flags().StringVarP(&syncAgentFlag, "agent", "a", "", "Sync only specific agent (pi, codex, claude)")
-	syncCmd.Flags().BoolVarP(&skipAgentSyncFlag, "skip-agent-sync", "", false, "Skip agent synchronization step")
 }
 
 func runSync(cmd *cobra.Command, args []string) error {
@@ -51,51 +68,142 @@ func runSync(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("loading repos: %w", err)
 	}
 
-	if syncFixFlag {
+	cache := repo.NewCache(config.ExpandPath(cacheConfig.Path))
+	fixRepos := syncFixReposFlag || syncFixAllFlag
+	fixAgents := syncFixOutofsyncAgentsFlag || syncFixAllFlag
+	if fixRepos {
 		fmt.Println("=== Syncing repositories ===")
-		cache := repo.NewCache(config.ExpandPath(cacheConfig.Path))
-
-		// Sync each repository
-		for name, info := range allRepos {
-			if !cache.Exists(name) {
-				// Clone if not in cache
-				spinner := NewSpinner(fmt.Sprintf("Cloning %s (branch: %s)...", info.URL, info.Branch))
-				spinner.Start()
-				if err := cache.Clone(info.URL, info.Branch); err != nil {
-					spinner.Stop()
-					fmt.Printf("  ! Failed to clone %s: %v\n", name, err)
-					continue
-				}
-				spinner.Stop()
-				fmt.Printf("  ✓ Cloned %s\n", name)
-				continue
-			}
-
-			// Pull updates for existing repos
-			spinner := NewSpinner(fmt.Sprintf("Updating %s ", name))
-			spinner.Start()
-			_ = cache.Pull(name) // Ignore pull errors
-			spinner.Stop()
-			fmt.Printf("  ✓ Updated %s\n", name)
-		}
-
-		if len(allRepos) == 0 {
-			fmt.Println("  No repositories configured. Run 'skillforge repo add <url>' to add one.")
-		}
 	} else {
 		fmt.Println("=== Checking repositories ===")
-		fmt.Printf("  %d repositories configured. Use --fix to update cached repositories.\n", len(allRepos))
 	}
+	syncRepositories(cache, allRepos, fixRepos, syncDiffFlag, os.Stdout)
 
-	// Step 2: Sync across agents (install missing skills as symlinks)
-	if !skipAgentSyncFlag {
-		fmt.Println()
-		if err := runAgentSync(cmd, args); err != nil {
-			return fmt.Errorf("agent sync failed: %w", err)
-		}
+	// Step 2: Sync across agents (install missing skills as symlinks when requested).
+	fmt.Println()
+	if err := runAgentSync(cmd, args, fixAgents); err != nil {
+		return fmt.Errorf("agent sync failed: %w", err)
 	}
 
 	return nil
+}
+
+func syncRepositories(cache syncRepoCache, repos map[string]config.RepoInfo, fix, showDiff bool, out io.Writer) {
+	if len(repos) == 0 {
+		fmt.Fprintln(out, "  No repositories configured. Run 'skillforge repo add <url>' to add one.")
+		return
+	}
+
+	names := make([]string, 0, len(repos))
+	for name := range repos {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	for _, name := range names {
+		info := repos[name]
+		branch := info.Branch
+		if branch == "" {
+			branch = "main"
+		}
+
+		if !cache.Exists(name) {
+			if !fix {
+				fmt.Fprintf(out, "  ! %s is not cached. Use --fix-sync-repos to clone it.\n", name)
+				continue
+			}
+			if err := cache.Clone(info.URL, branch); err != nil {
+				fmt.Fprintf(out, "  ! Failed to clone %s: %v\n", name, err)
+				continue
+			}
+			fmt.Fprintf(out, "  ✓ Cloned %s\n", name)
+			continue
+		}
+
+		localCommit, localErr := cache.GetCommit(name)
+		if err := cache.Fetch(name); err != nil {
+			fmt.Fprintf(out, "  ! Failed to fetch %s: %v\n", name, err)
+			continue
+		}
+		remoteCommit, remoteErr := cache.GetRemoteCommit(name, branch)
+		if localErr != nil {
+			fmt.Fprintf(out, "  ! Failed to read local commit for %s: %v\n", name, localErr)
+			continue
+		}
+		if remoteErr != nil {
+			fmt.Fprintf(out, "  ! Failed to read remote commit for %s: %v\n", name, remoteErr)
+			continue
+		}
+
+		if localCommit == remoteCommit {
+			fmt.Fprintf(out, "  ✓ %s up to date\n", name)
+			continue
+		}
+
+		fmt.Fprintf(out, "  ↻ %s has remote changes: %s -> %s\n", name, shortCommit(localCommit), shortCommit(remoteCommit))
+		if showDiff {
+			printIncomingDiff(cache, name, branch, out)
+		}
+		if !fix {
+			continue
+		}
+
+		if err := cache.Pull(name); err != nil {
+			fmt.Fprintf(out, "  ! Failed to update %s: %v\n", name, err)
+			continue
+		}
+		newCommit, err := cache.GetCommit(name)
+		if err != nil {
+			fmt.Fprintf(out, "  ✓ Updated %s\n", name)
+			continue
+		}
+		fmt.Fprintf(out, "  ✓ Updated %s to %s\n", name, shortCommit(newCommit))
+	}
+}
+
+func printIncomingDiff(cache syncRepoCache, name, branch string, out io.Writer) {
+	logOutput, logErr := cache.GetIncomingLog(name, branch)
+	nameStatusOutput, statusErr := cache.GetIncomingNameStatus(name, branch)
+
+	if logErr != nil {
+		fmt.Fprintf(out, "    ! Failed to read incoming commits: %v\n", logErr)
+	} else if logOutput != "" {
+		fmt.Fprintln(out, "    Commits:")
+		for _, line := range splitNonEmptyLines(logOutput) {
+			fmt.Fprintf(out, "      %s\n", line)
+		}
+	} else {
+		fmt.Fprintln(out, "    Commits: none")
+	}
+
+	if statusErr != nil {
+		fmt.Fprintf(out, "    ! Failed to read incoming file changes: %v\n", statusErr)
+	} else if nameStatusOutput != "" {
+		fmt.Fprintln(out, "    Files:")
+		for _, line := range splitNonEmptyLines(nameStatusOutput) {
+			fmt.Fprintf(out, "      %s\n", line)
+		}
+	} else {
+		fmt.Fprintln(out, "    Files: none")
+	}
+}
+
+func splitNonEmptyLines(text string) []string {
+	lines := strings.Split(text, "\n")
+	result := make([]string, 0, len(lines))
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			result = append(result, line)
+		}
+	}
+	return result
+}
+
+func shortCommit(commit string) string {
+	if len(commit) > 7 {
+		return commit[:7]
+	}
+	return commit
 }
 
 func rejectSyncScopeFlag(cmd *cobra.Command) error {
@@ -106,7 +214,7 @@ func rejectSyncScopeFlag(cmd *cobra.Command) error {
 }
 
 // runAgentSync syncs skills across targets by installing missing skills.
-func runAgentSync(cmd *cobra.Command, args []string) error {
+func runAgentSync(cmd *cobra.Command, args []string, fixAgents bool) error {
 	fmt.Println("=== Agent skill synchronization ===")
 
 	// Load global config and repos
@@ -195,8 +303,8 @@ func runAgentSync(cmd *cobra.Command, args []string) error {
 	}
 	// Dry-run mode
 	totalGlobalMissing := countMissing(missingGlobal)
-	if !syncFixFlag || dryRunFlag {
-		fmt.Printf("\n  [CHECK] Would link %d global skill(s). Use --fix to apply.\n", totalGlobalMissing)
+	if !fixAgents || dryRunFlag {
+		fmt.Printf("\n  [CHECK] Would link %d global skill(s). Use --fix-outofsync-agents to apply.\n", totalGlobalMissing)
 		return nil
 	}
 

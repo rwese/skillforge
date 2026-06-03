@@ -93,6 +93,48 @@ func (c *Cache) GetCommit(name string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
+// GetRemoteCommit gets the current fetched commit hash for origin/<branch>.
+func (c *Cache) GetRemoteCommit(name, branch string) (string, error) {
+	if branch == "" {
+		branch = "main"
+	}
+	targetDir := filepath.Join(c.Path, name)
+	cmd := exec.Command("git", "-C", targetDir, "rev-parse", "origin/"+branch)
+	out, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+// GetIncomingLog returns one-line commits present in origin/<branch> but not HEAD.
+func (c *Cache) GetIncomingLog(name, branch string) (string, error) {
+	if branch == "" {
+		branch = "main"
+	}
+	targetDir := filepath.Join(c.Path, name)
+	cmd := exec.Command("git", "-C", targetDir, "log", "--oneline", "HEAD..origin/"+branch)
+	out, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+// GetIncomingNameStatus returns changed files present in origin/<branch> but not HEAD.
+func (c *Cache) GetIncomingNameStatus(name, branch string) (string, error) {
+	if branch == "" {
+		branch = "main"
+	}
+	targetDir := filepath.Join(c.Path, name)
+	cmd := exec.Command("git", "-C", targetDir, "diff", "--name-status", "HEAD..origin/"+branch)
+	out, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
 // GetUpdated gets the last update time of a cached repository.
 func (c *Cache) GetUpdated(name string) (time.Time, error) {
 	targetDir := filepath.Join(c.Path, name)

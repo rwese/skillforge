@@ -10,7 +10,7 @@ go test ./...                              # Run tests
 go test ./... -cover                       # Coverage
 go mod tidy                                # Update dependencies
 ./skillforge sync                          # Check global target sync
-./skillforge sync --fix                    # Update repos and fix global target sync
+./skillforge sync --fix-all                # Update repos and fix global target sync
 ```
 
 ## Structure
@@ -43,7 +43,7 @@ skillforge/
 - `target.globalPath` is the legacy global directory.
 - `target.globalPaths` is a named map of additional global directories.
 - If `globalPaths` is empty, treat `globalPath` as named `default`.
-- `sync` is global-only and read-only by default; `--fix` applies repo updates and missing skill links.
+- `sync` is global-only and read-only by default; `--fix-sync-repos` updates repos, `--fix-outofsync-agents` links missing skills, and `--fix-all` applies both.
 - `setup` uses `internal/agents` and `agents.toml`; do not assume that path drives `skill` commands.
 
 ## Testing
