@@ -91,6 +91,25 @@ func (e *baselineEnv) chdir() {
 	os.Chdir(e.tmpDir)
 }
 
+func (e *baselineEnv) writeLocalConfig(t *testing.T, content string) {
+	t.Helper()
+	localDir := filepath.Join(e.tmpDir, ".skillforge")
+	if err := os.MkdirAll(localDir, 0755); err != nil {
+		t.Fatalf("MkdirAll(.skillforge) error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(localDir, "config.toml"), []byte(content), 0644); err != nil {
+		t.Fatalf("WriteFile(local config) error = %v", err)
+	}
+}
+
+func (e *baselineEnv) writeGlobalConfig(t *testing.T, content string) {
+	t.Helper()
+	globalCfg := filepath.Join(e.homeDir, ".config", "skillforge", "config.toml")
+	if err := os.WriteFile(globalCfg, []byte(content), 0644); err != nil {
+		t.Fatalf("WriteFile(global config) error = %v", err)
+	}
+}
+
 // ============================================================
 // TARGET TESTS - Local Scope
 // ============================================================

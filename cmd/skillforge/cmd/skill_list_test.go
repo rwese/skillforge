@@ -121,6 +121,109 @@ func TestResolveLocalSkillDirKeepsAbsolutePaths(t *testing.T) {
 	}
 }
 
+func TestLocalTargetsForScopeUsesGlobalTargetsWithoutLocalConfig(t *testing.T) {
+	globalTargets := map[string]config.Target{
+		"agents": {
+			Name:      "agents",
+			LocalPath: ".agents/skills",
+			Enabled:   true,
+		},
+		"codex": {
+			Name:      "codex",
+			LocalPath: ".codex/skills",
+			Enabled:   true,
+		},
+	}
+
+	targets := localTargetsForScope(globalTargets, nil, false)
+	paths := appendLocalInstallPaths(nil, targets, "/repo/root")
+
+	seen := map[string]string{}
+	for _, path := range paths {
+		seen[path.Label] = path.Path
+	}
+
+	if seen["agents (local)"] != filepath.Join("/repo/root", ".agents", "skills") {
+		t.Fatalf("agents local path missing from %#v", paths)
+	}
+	if seen["codex (local)"] != filepath.Join("/repo/root", ".codex", "skills") {
+		t.Fatalf("codex local path missing from %#v", paths)
+	}
+}
+
+func TestLocalTargetsForScopeMergesLocalOverrides(t *testing.T) {
+	globalTargets := map[string]config.Target{
+		"agents": {
+			Name:      "agents",
+			LocalPath: ".agents/skills",
+			Enabled:   true,
+		},
+		"codex": {
+			Name:      "codex",
+			LocalPath: ".codex/skills",
+			Enabled:   true,
+		},
+	}
+	localCfg := &config.Config{
+		Targets: map[string]config.Target{
+			"codex": {
+				Name:      "codex",
+				LocalPath: ".custom-codex/skills",
+				Enabled:   true,
+			},
+			"pi": {
+				Name:      "pi",
+				LocalPath: ".pi/skills",
+				Enabled:   true,
+			},
+		},
+	}
+
+	targets := localTargetsForScope(globalTargets, localCfg, true)
+	paths := appendLocalInstallPaths(nil, targets, "/repo/root")
+
+	seen := map[string]string{}
+	for _, path := range paths {
+		seen[path.Label] = path.Path
+	}
+
+	if seen["agents (local)"] != filepath.Join("/repo/root", ".agents", "skills") {
+		t.Fatalf("agents local path missing from %#v", paths)
+	}
+	if seen["codex (local)"] != filepath.Join("/repo/root", ".custom-codex", "skills") {
+		t.Fatalf("codex local override missing from %#v", paths)
+	}
+	if seen["pi (local)"] != filepath.Join("/repo/root", ".pi", "skills") {
+		t.Fatalf("pi local path missing from %#v", paths)
+	}
+}
+
+func TestAppendLocalRemovePathsUsesResolvedLocalTargets(t *testing.T) {
+	targets := map[string]config.Target{
+		"agents": {
+			Name:      "agents",
+			LocalPath: ".agents/skills",
+			Enabled:   true,
+		},
+		"disabled": {
+			Name:      "disabled",
+			LocalPath: ".disabled/skills",
+			Enabled:   false,
+		},
+	}
+
+	paths := appendLocalRemovePaths(nil, targets, "/repo/root")
+	if len(paths) != 1 {
+		t.Fatalf("appendLocalRemovePaths() returned %#v, want one enabled target", paths)
+	}
+	if paths[0].Label != "agents (local)" {
+		t.Fatalf("remove label = %q, want %q", paths[0].Label, "agents (local)")
+	}
+	if paths[0].Path != filepath.Join("/repo/root", ".agents", "skills") {
+		t.Fatalf("remove path = %q, want resolved agents path", paths[0].Path)
+	}
+}
+
 func TestFormatSkillListMultipleGlobalLabels(t *testing.T) {
 	skills := []SkillOutput{
 		{Name: "docker", Target: "codex/global:default", Repo: "agents-grimoire"},

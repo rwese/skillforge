@@ -85,7 +85,7 @@ skillforge skill update [-c] [-t target]     # Update installed skills
 
 ```bash
 skillforge target list [-f json]        # List targets
-skillforge target add <name> <path> [-e] # Add target (use -e to enable)
+skillforge target add <name> <globalPath> <localPath> [-e] # Add target (use -e to enable)
 skillforge target remove <name>          # Remove target
 skillforge target enable <name>          # Enable target
 skillforge target disable <name>        # Disable target

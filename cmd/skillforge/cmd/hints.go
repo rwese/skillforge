@@ -30,8 +30,8 @@ type Hint struct {
 // Output:
 //
 //	Hint:
-//	  • Run: $0 target add <name> <path> -e
-//	  • Example: $0 target add pi ~/.pi/agent/skills/ -e
+//	  • Run: $0 target add <name> <globalPath> <localPath> -e
+//	  • Example: $0 target add pi ~/.pi/agent/skills .pi/skills -e
 func FormatHint(hint Hint) string {
 	if len(hint.Lines) == 0 {
 		return ""
@@ -63,8 +63,8 @@ var (
 	HintNoTargets = Hint{
 		Title: "no targets configured",
 		Lines: []string{
-			"Run: $0 target add <name> <path> -e",
-			"Example: $0 target add pi ~/.pi/agent/skills/ -e",
+			"Run: $0 target add <name> <globalPath> <localPath> -e",
+			"Example: $0 target add pi ~/.pi/agent/skills .pi/skills -e",
 		},
 	}
 
@@ -103,7 +103,7 @@ var (
 	HintTargetExists = Hint{
 		Title: "target already exists",
 		Lines: []string{
-			"Use a different name: $0 target add <newname> <path> -e",
+			"Use a different name: $0 target add <newname> <globalPath> <localPath> -e",
 			"View targets: $0 target list",
 		},
 	}
@@ -112,7 +112,7 @@ var (
 		Title: "target not found",
 		Lines: []string{
 			"View targets: $0 target list",
-			"Add new target: $0 target add <name> <path> -e",
+			"Add new target: $0 target add <name> <globalPath> <localPath> -e",
 		},
 	}
 

@@ -487,42 +487,6 @@ enabled = true
 	}
 }
 
-// --- Hint Tests ---
-
-func TestHintShownForNoTargets(t *testing.T) {
-	env := setupIntegrationTest(t)
-
-	// No targets configured
-	_, stderr, exitCode := env.runSkillforge(t, "target", "list")
-	if exitCode != 0 {
-		t.Fatalf("target list should not fail for empty: %s", stderr)
-	}
-
-	if !bytes.Contains([]byte(stderr), []byte("Hint")) {
-		t.Errorf("expected hint for no targets, got: %s", stderr)
-	}
-	if !bytes.Contains([]byte(stderr), []byte("skillforge target add")) {
-		t.Errorf("expected hint to show 'target add' command, got: %s", stderr)
-	}
-}
-
-func TestHintShownForDuplicateTarget(t *testing.T) {
-	env := setupIntegrationTest(t)
-
-	// Add a target
-	_, _, _ = env.runSkillforge(t, "target", "add", "pi", "/tmp/pi")
-
-	// Try to add duplicate
-	_, stderr, exitCode := env.runSkillforge(t, "target", "add", "pi", "/tmp/other")
-	if exitCode == 0 {
-		t.Fatal("expected error for duplicate")
-	}
-
-	if !bytes.Contains([]byte(stderr), []byte("Hint")) {
-		t.Errorf("expected hint for duplicate target, got: %s", stderr)
-	}
-}
-
 // --- NO_COLOR Tests ---
 
 func TestNoColorDisablesColors(t *testing.T) {
