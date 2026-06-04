@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.10.0] - 2026-06-03
+
+### Added
+- `sync --diff` to show incoming remote commits and changed files.
+- `sync --fix-sync-repos`, `sync --fix-outofsync-agents`, and `sync --fix-all` for explicit fix controls.
+
+### Changed
+- `sync` now fetches cached repos in read-only mode and reports remote changes.
+- Local skill installs now use globally configured targets with `localPath` when running inside a git repo.
+- Release tags use `v{major}.{minor}.{patch}` format.
+
+### Removed
+- Removed broad `sync --fix` and `sync --skip-agent-sync` flags.
+
 ### Changed
 - **Breaking**: Skills are now symlinked instead of copied
   - No more `.grimoire` metadata files

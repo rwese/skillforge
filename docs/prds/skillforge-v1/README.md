@@ -111,12 +111,9 @@ skillforge/
 path = "~/.cache/skillforge/repos"
 
 [targets.pi]
-path = "~/.pi/agent/skills/"
+globalPath = "~/.pi/agent/skills/"
+localPath = ".pi/skills"
 enabled = true
-
-[targets.pi-local]
-path = ".pi/skills/"
-enabled = false
 ```
 
 **Grimoire format (`.grimoire` in skill directory):**
@@ -218,11 +215,13 @@ skillforge skill search <query>
 ```
 
 ```bash
-skillforge skill update [OPTIONS]
+skillforge sync [OPTIONS]
 
 OPTIONS:
-  -c, --check    Check for updates without applying
-  -t, --target <name>   Filter by target
+  --diff                  Show incoming repository changes
+  --fix-sync-repos        Update cached repositories
+  --fix-outofsync-agents  Link missing agent skills
+  --fix-all               Apply repository and agent fixes
 ```
 
 #### Target Management
@@ -235,7 +234,7 @@ OPTIONS:
 ```
 
 ```bash
-skillforge target add <name> <path> [OPTIONS]
+skillforge target add <name> <globalPath> <localPath> [OPTIONS]
 
 OPTIONS:
   -e, --enable    Enable target after creation
@@ -326,7 +325,7 @@ Search results for "git":
 - [ ] Single binary, no external runtime deps
 - [ ] All operations work with both global and local configs
 - [ ] Grimoire metadata tracks source, commit, installed_at
-- [ ] `skill update --check` correctly identifies skills with commit changes
+- [ ] `sync --diff` correctly identifies incoming repository changes
 - [ ] Search returns relevant results within 100ms for 100 skills
 - [ ] Install/remove operations are atomic (fail-safe)
 - [ ] Tests cover core operations (>80% coverage target)
@@ -363,8 +362,8 @@ Search results for "git":
 | `skillforge remove` | `skillforge skill remove` |
 | `skillforge list` | `skillforge skill list` |
 | `skillforge search` | `skillforge skill search` |
-| `skillforge update` | `skillforge skill update` |
-| `skillforge update --check` | `skillforge skill update --check` |
+| `skillforge update` | `skillforge sync --fix-all` |
+| `skillforge update --check` | `skillforge sync --diff` |
 | `skillforge doctor` | (defer to v2) |
 | `skillforge manage` | (defer to TUI) |
 | `skillforge suggest` | (defer) |

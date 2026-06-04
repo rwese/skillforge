@@ -49,7 +49,7 @@ Run 'skillforge repo update' to restore missing cache.
 
 **Triggers:**
 - `skill list` - auto-check installed skills
-- `skill update` - auto-check before update
+- `sync --diff` - fetch and report source changes
 
 **Scenarios detected:**
 - Source repo updated but skill not re-installed
@@ -71,8 +71,8 @@ Installed Skills:
     ├─ git-conventional @ def5678  ↻ (source updated)
     └─ tmux  @ ghi9012
 
-$ skillforge skill update
-  ↻ docker-build in pi has updates (run skillforge skill update --force to reinstall)
+$ skillforge sync --diff
+  ↻ agents-grimoire has remote changes: abc1234 -> def5678
 ```
 
 ## 3. Command Mapping
@@ -80,7 +80,7 @@ $ skillforge skill update
 | Feature | Command |
 |---------|---------|
 | Diagnostics | `skillforge doctor` |
-| Dirty state | Auto in `skill list`, `skill update` |
+| Dirty state | Auto in `skill list`, `sync --diff` |
 
 ## 4. Data Model Changes
 

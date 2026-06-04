@@ -114,7 +114,8 @@ Config merging behavior:
 path = "~/.cache/skillforge/repos"
 
 [targets.pi]
-path = "~/.pi/agent/skills/"
+globalPath = "~/.pi/agent/skills/"
+localPath = ".pi/skills"
 enabled = true
 
 # Local config (.skillforge/config.toml)
@@ -127,7 +128,8 @@ enabled = true
 path = "~/.cache/skillforge/repos"
 
 [targets.pi]
-path = "~/.pi/agent/skills/"
+globalPath = "~/.pi/agent/skills/"
+localPath = ".pi/skills"
 enabled = true
 
 [targets.local]
@@ -177,8 +179,8 @@ When stdout is not a terminal (piped/redirected):
 Error: no enabled targets found.
 
 Hint:
-  • Run: skillforge target add <name> <path> -e
-  • Example: skillforge target add pi ~/.pi/agent/skills/ -e
+  • Run: skillforge target add <name> <globalPath> <localPath> -e
+  • Example: skillforge target add pi ~/.pi/agent/skills .pi/skills -e
 ```
 
 **Table Output** (`-f table`)
@@ -332,10 +334,10 @@ $ skillforge skill install docker
 Error: no enabled targets found.
 
 Hint:
-  • Run: skillforge target add <name> <path> -e
-  • Example: skillforge target add pi ~/.pi/agent/skills/ -e
+  • Run: skillforge target add <name> <globalPath> <localPath> -e
+  • Example: skillforge target add pi ~/.pi/agent/skills .pi/skills -e
 
-$ skillforge target add pi ~/.pi/agent/skills/ -e
+$ skillforge target add pi ~/.pi/agent/skills .pi/skills -e
 ✓ Added target pi
 
 $ skillforge skill install docker

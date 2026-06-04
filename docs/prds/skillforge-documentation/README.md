@@ -137,9 +137,11 @@ skillforge skill install docker -t pi
 # 4. List installed skills
 skillforge skill list
 
-# 5. Update skills
-skillforge skill update --check  # Check for updates
-skillforge skill update         # Apply updates
+# 5. Check sync state
+skillforge sync --diff
+
+# 6. Apply sync fixes
+skillforge sync --fix-all
 ```
 
 ---

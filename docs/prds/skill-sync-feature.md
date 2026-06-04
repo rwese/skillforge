@@ -21,7 +21,7 @@
 ## Acceptance Criteria
 
 - [ ] `skillforge sync` syncs repos + updates skills + syncs across agents
-- [ ] `skillforge sync --check` shows all three operations preview
+- [ ] `skillforge sync --diff` shows incoming repository changes
 - [ ] Scope flag (`--scope global|local|auto`) respects agent config scopes
 - [ ] Agent flag (`--agent <name>`) syncs only specific agent
 - [ ] No cross-scope contamination (global stays global, local stays local)
@@ -30,8 +30,8 @@
 
 ## First Verifiable State
 
-1. **[Verification]** `skillforge skill sync --dry-run` runs without error and shows missing skills
-2. **[Core Logic]** `skillforge skill sync --apply` installs missing skills
+1. **[Verification]** `skillforge sync --dry-run` runs without error and shows missing skills
+2. **[Core Logic]** `skillforge sync --fix-outofsync-agents` installs missing skills
 3. **[Polish]** Scope filtering and agent filtering work correctly
 
 ## Implementation Notes
@@ -58,7 +58,7 @@
 ## Incremental Plan
 
 ### 1. **[Verification First]** — Add flags to existing sync command
-- Add `--agent`, `--scope`, `--skip-agent-sync` flags to existing sync.go
+- Add `--agent`, `--diff`, `--fix-sync-repos`, `--fix-outofsync-agents`, and `--fix-all` flags to existing sync.go
 - Verify flags register correctly
 
 ### 2. **[Core Logic]** — Implement agent sync detection
@@ -80,11 +80,13 @@
 
 ## Definition of Done
 
-- [ ] `skillforge sync --check` shows agent sync preview
-- [ ] `skillforge sync` syncs repos + skills + agents
+- [ ] `skillforge sync --diff` shows incoming repository changes
+- [ ] `skillforge sync` checks repos + skills + agents without applying fixes
 - [ ] `skillforge sync --agent pi` syncs only pi
 - [ ] `skillforge sync --scope global` syncs only global scope
-- [ ] `skillforge sync --skip-agent-sync` skips agent synchronization
+- [ ] `skillforge sync --fix-sync-repos` updates cached repositories
+- [ ] `skillforge sync --fix-outofsync-agents` links missing skills
+- [ ] `skillforge sync --fix-all` applies repository and agent fixes
 - [ ] No cross-scope contamination
 - [ ] Tests pass
 - [ ] Documentation updated

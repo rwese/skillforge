@@ -57,6 +57,7 @@ skillforge/
 
 - Branches: `feat/<name>`, `fix/<name>`.
 - Commits: Conventional Commits.
+- Release tags: `v{major}.{minor}.{patch}` only, for example `v0.10.0`.
 - PRs: squash-merge to `main`.
 
 ## Boundaries

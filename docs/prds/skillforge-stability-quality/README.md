@@ -298,7 +298,7 @@ $ skillforge target remove pi
 | Skill not found | `skill "x" not found` | `Skill "x" not found in any cached repository. Run 'skillforge skill search x' to find available skills.` |
 | Target not found | `target "x" not found` | `Target "x" not found. Run 'skillforge target list' to see configured targets.` |
 | Repo not cached | `repo "x" not cached` | `Repository "x" not cached. Run 'skillforge repo add <url>' to cache it.` |
-| Config error | `failed to load config` | `Failed to load config: no such file. Run 'skillforge target add <name> <path>' to create a config.` |
+| Config error | `failed to load config` | `Failed to load config: no such file. Run 'skillforge target add <name> <globalPath> <localPath>' to create a config.` |
 | Git error | `failed to clone` | `Failed to clone https://github.com/user/repo: authentication failed. Ensure SSH keys are configured or use HTTPS URL.` |
 
 ### 5.4 Progress Indication

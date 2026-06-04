@@ -5,7 +5,7 @@ A focused CLI for managing agent skills from git repositories.
 ## Features
 
 - **Cache repositories** - Clone and keep skill repositories up-to-date
-- **Install skills** - Copy skills to agent skill directories with version tracking
+- **Install skills** - Link skills to agent skill directories
 - **Search** - Find skills across cached repositories
 - **Multiple targets** - Support skills for different agents (pi, claude, etc.)
 - **Auto-detect scope** - Uses local config in git repos, falls back to global
@@ -55,9 +55,11 @@ skillforge skill install docker
 # List installed skills
 skillforge skill list
 
-# Update skills
-skillforge skill update --check  # Check for updates
-skillforge skill update         # Apply updates
+# Check sync state
+skillforge sync --diff
+
+# Apply repository and agent sync fixes
+skillforge sync --fix-all
 ```
 
 ## Commands
@@ -78,7 +80,10 @@ skillforge skill install <name> [-t target]  # Install skill
 skillforge skill list [-t target] [-f json]  # List installed skills
 skillforge skill remove <name> [-t target]   # Remove skill
 skillforge skill search <query> [-f json]     # Search skills
-skillforge skill update [-c] [-t target]     # Update installed skills
+skillforge sync [--diff]                     # Fetch repos and check agent sync
+skillforge sync --fix-sync-repos             # Update cached repos
+skillforge sync --fix-outofsync-agents       # Link missing agent skills
+skillforge sync --fix-all                    # Apply both fixes
 ```
 
 ### Target Management
@@ -105,7 +110,8 @@ Example config:
 path = "~/.cache/skillforge/repos"
 
 [targets.pi]
-path = "~/.pi/agent/skills/"
+globalPath = "~/.pi/agent/skills/"
+localPath = ".pi/skills"
 enabled = true
 ```
 
