@@ -1090,3 +1090,166 @@ enabled = true
 		t.Errorf("Cache.Path = %q, want %q", loadedCfg.Cache.Path, "/original/cache")
 	}
 }
+
+// --- EffectiveCachePath tests ---
+
+func TestEffectiveCachePathFromConfigs(t *testing.T) {
+	defaultPath := DefaultCachePath()
+	if defaultPath == "" {
+		t.Fatal("DefaultCachePath() returned empty string")
+	}
+
+	tests := []struct {
+		name      string
+		globalCfg *Config
+		localCfg  *Config
+		want      string
+	}{
+		{
+			name:      "both nil returns default",
+			globalCfg: nil,
+			localCfg:  nil,
+			want:      defaultPath,
+		},
+		{
+			name:      "global default only returns default",
+			globalCfg: &Config{Cache: CacheConfig{Path: defaultPath}},
+			localCfg:  nil,
+			want:      defaultPath,
+		},
+		{
+			name:      "local default only returns default",
+			globalCfg: nil,
+			localCfg:  &Config{Cache: CacheConfig{Path: defaultPath}},
+			want:      defaultPath,
+		},
+		{
+			name:      "global override only returns global",
+			globalCfg: &Config{Cache: CacheConfig{Path: "/custom/global"}},
+			localCfg:  nil,
+			want:      "/custom/global",
+		},
+		{
+			name:      "local override only returns local",
+			globalCfg: nil,
+			localCfg:  &Config{Cache: CacheConfig{Path: "/custom/local"}},
+			want:      "/custom/local",
+		},
+		{
+			name:      "local override beats global override",
+			globalCfg: &Config{Cache: CacheConfig{Path: "/custom/global"}},
+			localCfg:  &Config{Cache: CacheConfig{Path: "/custom/local"}},
+			want:      "/custom/local",
+		},
+		{
+			name:      "local default does not override global custom",
+			globalCfg: &Config{Cache: CacheConfig{Path: "/custom/global"}},
+			localCfg:  &Config{Cache: CacheConfig{Path: defaultPath}},
+			want:      "/custom/global",
+		},
+		{
+			name:      "global default does not override local custom",
+			globalCfg: &Config{Cache: CacheConfig{Path: defaultPath}},
+			localCfg:  &Config{Cache: CacheConfig{Path: "/custom/local"}},
+			want:      "/custom/local",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := EffectiveCachePathFromConfigs(tt.globalCfg, tt.localCfg)
+			if got != tt.want {
+				t.Errorf("EffectiveCachePathFromConfigs() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestLoaderEffectiveCachePath(t *testing.T) {
+	tmpDir := t.TempDir()
+	globalPath := filepath.Join(tmpDir, "config.toml")
+	localDir := filepath.Join(tmpDir, ".skillforge")
+	if err := os.MkdirAll(localDir, 0755); err != nil {
+		t.Fatalf("MkdirAll(local) error = %v", err)
+	}
+	localPath := filepath.Join(localDir, "config.toml")
+
+	loader := &Loader{
+		scope:      ScopeGlobal,
+		globalPath: globalPath,
+	}
+
+	// DetectLocalPath() searches from cwd to git root. Run from tmpDir
+	// so the local config under .skillforge/ is discoverable.
+	t.Chdir(tmpDir)
+
+	t.Run("no config files returns default", func(t *testing.T) {
+		got, err := loader.EffectiveCachePath()
+		if err != nil {
+			t.Fatalf("EffectiveCachePath() error = %v", err)
+		}
+		if got != DefaultCachePath() {
+			t.Errorf("EffectiveCachePath() = %q, want default %q", got, DefaultCachePath())
+		}
+	})
+
+	t.Run("global override only", func(t *testing.T) {
+		if err := os.WriteFile(globalPath, []byte(`cache.path = "/custom/global"`), 0644); err != nil {
+			t.Fatalf("WriteFile(global) error = %v", err)
+		}
+		t.Cleanup(func() { os.Remove(globalPath) })
+
+		got, err := loader.EffectiveCachePath()
+		if err != nil {
+			t.Fatalf("EffectiveCachePath() error = %v", err)
+		}
+		if got != "/custom/global" {
+			t.Errorf("EffectiveCachePath() = %q, want %q", got, "/custom/global")
+		}
+	})
+
+	t.Run("local override beats global override", func(t *testing.T) {
+		if err := os.WriteFile(globalPath, []byte(`cache.path = "/custom/global"`), 0644); err != nil {
+			t.Fatalf("WriteFile(global) error = %v", err)
+		}
+		t.Cleanup(func() { os.Remove(globalPath) })
+
+		if err := os.WriteFile(localPath, []byte(`cache.path = "/custom/local"`), 0644); err != nil {
+			t.Fatalf("WriteFile(local) error = %v", err)
+		}
+		t.Cleanup(func() { os.Remove(localPath) })
+
+		got, err := loader.EffectiveCachePath()
+		if err != nil {
+			t.Fatalf("EffectiveCachePath() error = %v", err)
+		}
+		if got != "/custom/local" {
+			t.Errorf("EffectiveCachePath() = %q, want %q", got, "/custom/local")
+		}
+	})
+
+	t.Run("local with no cache override keeps global override", func(t *testing.T) {
+		// Regression: prior to the fix, `Load()` for ScopeLocal would
+		// silently drop the global cache.path and report the default,
+		// causing `skill install -s local` to look in the wrong place
+		// after the user had set a custom global cache.path.
+		if err := os.WriteFile(globalPath, []byte(`cache.path = "/custom/global"`), 0644); err != nil {
+			t.Fatalf("WriteFile(global) error = %v", err)
+		}
+		t.Cleanup(func() { os.Remove(globalPath) })
+
+		if err := os.WriteFile(localPath, []byte(`[repos.grimoire]
+url = "https://example.com/grimoire"`), 0644); err != nil {
+			t.Fatalf("WriteFile(local) error = %v", err)
+		}
+		t.Cleanup(func() { os.Remove(localPath) })
+
+		got, err := loader.EffectiveCachePath()
+		if err != nil {
+			t.Fatalf("EffectiveCachePath() error = %v", err)
+		}
+		if got != "/custom/global" {
+			t.Errorf("EffectiveCachePath() = %q, want %q (global override should be honored when local has no cache override)", got, "/custom/global")
+		}
+	})
+}

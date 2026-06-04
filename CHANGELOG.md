@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.10.1] - 2026-06-04
+
+### Fixed
+- `skill install -s local` (and other scope-aware commands) now resolve the
+  on-disk git cache via a single effective `cache.path` instead of
+  disagreeing between the global and local configs. Previously, the global
+  config's custom `cache.path` was used to look for repos even when the
+  local config had no `cache.path` override, so a repo that
+  `repo add -s local` had cloned to the default location was reported as
+  "not found in any cached repository".
+
 ## [v0.10.0] - 2026-06-03
 
 ### Added

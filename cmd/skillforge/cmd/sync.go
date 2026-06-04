@@ -383,7 +383,11 @@ type SkillInfo struct {
 
 // buildSkillCatalog builds a map of all available skills from cached repos.
 func buildSkillCatalog(cfg *config.Config) (map[string]SkillInfo, error) {
-	cache := repo.NewCache(config.ExpandPath(cfg.Cache.Path))
+	cachePath, err := config.NewLoader(config.ScopeGlobal).EffectiveCachePath()
+	if err != nil {
+		return nil, err
+	}
+	cache := repo.NewCache(config.ExpandPath(cachePath))
 	catalog := make(map[string]SkillInfo)
 
 	for repoName, info := range cfg.Repos {

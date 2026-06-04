@@ -53,7 +53,11 @@ func runRepoAdd(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	cache := repo.NewCache(config.ExpandPath(cfg.Cache.Path))
+	cachePath, err := config.NewLoader(parseScope(scopeFlag)).EffectiveCachePath()
+	if err != nil {
+		return err
+	}
+	cache := repo.NewCache(config.ExpandPath(cachePath))
 	if err := cache.Ensure(); err != nil {
 		return err
 	}
@@ -120,7 +124,11 @@ func runRepoList(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	cache := repo.NewCache(config.ExpandPath(cfg.Cache.Path))
+	cachePath, err := config.NewLoader(parseScope(scopeFlag)).EffectiveCachePath()
+	if err != nil {
+		return err
+	}
+	cache := repo.NewCache(config.ExpandPath(cachePath))
 
 	// Collect repos
 	var repos []RepoOutput
@@ -190,7 +198,11 @@ func runRepoRemove(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	cache := repo.NewCache(config.ExpandPath(cfg.Cache.Path))
+	cachePath, err := config.NewLoader(parseScope(scopeFlag)).EffectiveCachePath()
+	if err != nil {
+		return err
+	}
+	cache := repo.NewCache(config.ExpandPath(cachePath))
 
 	// Remove from cache
 	if err := cache.Remove(name); err != nil {
@@ -226,7 +238,11 @@ func runRepoUpdate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	cache := repo.NewCache(config.ExpandPath(cfg.Cache.Path))
+	cachePath, err := config.NewLoader(parseScope(scopeFlag)).EffectiveCachePath()
+	if err != nil {
+		return err
+	}
+	cache := repo.NewCache(config.ExpandPath(cachePath))
 
 	reposToUpdate := cfg.Repos
 	if len(args) > 0 {

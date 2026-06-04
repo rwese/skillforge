@@ -186,7 +186,15 @@ func completionReposAndCache() (map[string]config.RepoInfo, string, error) {
 		}
 	}
 
-	return repos, globalCfg.Cache.Path, nil
+	// Cache is a single shared directory; resolve the effective path so
+	// completions that look up skills against the on-disk cache work
+	// regardless of which scope owns the config entry.
+	cachePath, err := config.NewLoader(config.ScopeGlobal).EffectiveCachePath()
+	if err != nil {
+		cachePath = globalCfg.Cache.Path
+	}
+
+	return repos, cachePath, nil
 }
 
 func installedSkillCompletions() []string {

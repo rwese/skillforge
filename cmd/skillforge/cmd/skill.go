@@ -98,7 +98,15 @@ func runSkillInstall(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	cache := repo.NewCache(config.ExpandPath(globalCfg.Cache.Path))
+	// Cache is a single shared directory: use the effective cache path
+	// (local override > global override > default). Reading only
+	// globalCfg.Cache.Path would miss a default-cache local repo when
+	// the global config sets a custom cache.path.
+	cachePath, err := config.NewLoader(config.ScopeGlobal).EffectiveCachePath()
+	if err != nil {
+		return err
+	}
+	cache := repo.NewCache(config.ExpandPath(cachePath))
 
 	// Process each skill
 	var errors []error
@@ -533,17 +541,18 @@ func newSkillListRepoResolver(globalCfg, localCfg *config.Config) skillListRepoR
 	repos := make(map[string]config.RepoInfo)
 	sourceName := make(map[string]string)
 
-	cachePath := ""
+	// Cache is a single shared directory. Use the effective path (local
+	// override > global override > default) so resolver lookups against
+	// the on-disk cache find repos no matter which scope owns the config
+	// entry.
+	cachePath := config.EffectiveCachePathFromConfigs(globalCfg, localCfg)
+
 	if globalCfg != nil {
-		cachePath = globalCfg.Cache.Path
 		for name, info := range globalCfg.Repos {
 			repos[name] = info
 		}
 	}
 	if localCfg != nil {
-		if localCfg.Cache.Path != "" {
-			cachePath = localCfg.Cache.Path
-		}
 		for name, info := range localCfg.Repos {
 			repos[name] = info
 		}
@@ -790,7 +799,11 @@ func runSkillSearch(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	cache := repo.NewCache(config.ExpandPath(cfg.Cache.Path))
+	cachePath, err := config.NewLoader(config.ScopeGlobal).EffectiveCachePath()
+	if err != nil {
+		return err
+	}
+	cache := repo.NewCache(config.ExpandPath(cachePath))
 
 	// Track local repos for display
 	localRepoNames := make(map[string]bool)

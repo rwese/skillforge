@@ -157,6 +157,86 @@ func (l *Loader) Load() (*Config, error) {
 	return cfg, nil
 }
 
+// DefaultCachePath returns the default cache directory path
+// (under the user's home directory). It is exported so callers
+// building an effective cache path can recognize the default.
+func DefaultCachePath() string {
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".cache", "skillforge", "repos")
+}
+
+// EffectiveCachePathFromConfigs returns the effective cache directory path
+// derived from two already-loaded *Config values: local override > global
+// override > default.
+//
+// Load() always populates cfg.Cache.Path with the default, so a non-empty
+// value does not by itself indicate an explicit override. We treat a value
+// as an override only when it differs from the default. A user who writes
+// the default into their config explicitly gets the default back, which is
+// the same outcome as not setting it at all.
+func EffectiveCachePathFromConfigs(globalCfg, localCfg *Config) string {
+	defaultPath := DefaultCachePath()
+	effective := defaultPath
+	if globalCfg != nil && globalCfg.Cache.Path != "" && globalCfg.Cache.Path != defaultPath {
+		effective = globalCfg.Cache.Path
+	}
+	if localCfg != nil && localCfg.Cache.Path != "" && localCfg.Cache.Path != defaultPath {
+		effective = localCfg.Cache.Path
+	}
+	return effective
+}
+
+// EffectiveCachePath returns the cache directory path that should be used for
+// the on-disk git cache, considering both the global and local configs.
+//
+// The cache is a single shared directory (a git checkout location), so the
+// effective path is resolved as: local override > global override > default.
+//
+// Reading both files directly (rather than inspecting values already merged
+// into a *Config) is required: Load() always populates cfg.Cache.Path with
+// the default, which would otherwise hide whether a scope actually set the
+// field. Only an explicit value in a config file is treated as an override.
+func (l *Loader) EffectiveCachePath() (string, error) {
+	effective := DefaultCachePath()
+
+	if err := l.readCachePathField(l.globalPath, &effective); err != nil {
+		return "", err
+	}
+
+	// Local config overrides the global one when it explicitly sets cache.path.
+	if localPath := DetectLocalPath(); localPath != "" {
+		if err := l.readCachePathField(localPath, &effective); err != nil {
+			return "", err
+		}
+	}
+
+	return effective, nil
+}
+
+// readCachePathField reads only the cache.path field from a config file and
+// updates *effective if the file sets a non-empty value.
+func (l *Loader) readCachePathField(path string, effective *string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+
+	var fileCfg struct {
+		Cache CacheConfig `toml:"cache"`
+	}
+	if _, err := toml.Decode(string(data), &fileCfg); err != nil {
+		return err
+	}
+
+	if fileCfg.Cache.Path != "" {
+		*effective = fileCfg.Cache.Path
+	}
+	return nil
+}
+
 func (l *Loader) loadFile(path string, cfg *Config) error {
 	data, err := os.ReadFile(path)
 	if err != nil {

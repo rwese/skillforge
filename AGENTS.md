@@ -45,6 +45,7 @@ skillforge/
 - If `globalPaths` is empty, treat `globalPath` as named `default`.
 - `sync` is global-only and read-only by default; `--fix-sync-repos` updates repos, `--fix-outofsync-agents` links missing skills, and `--fix-all` applies both.
 - `setup` uses `internal/agents` and `agents.toml`; do not assume that path drives `skill` commands.
+- The on-disk git cache is a single shared directory. The effective `cache.path` is: local override > global override > default. All commands that read or write the cache (`repo add/list/remove/update`, `skill install`, `skill search`, completions, `sync`) must go through `config.EffectiveCachePath` (file-based) or `config.EffectiveCachePathFromConfigs` (in-memory) — never read `cfg.Cache.Path` directly, since `Load()` pre-populates it with the default and that hides whether the user actually set the field.
 
 ## Testing
 
@@ -59,6 +60,21 @@ skillforge/
 - Commits: Conventional Commits.
 - Release tags: `v{major}.{minor}.{patch}` only, for example `v0.10.0`.
 - PRs: squash-merge to `main`.
+
+## Publishing / Release
+
+The full release flow is described in `docs/publish.md` (read it before
+publishing). Short version:
+
+1. `git status` clean, on `main`, up to date with `origin/main`.
+2. `CHANGELOG.md` `[Unreleased]` section has the entry for this release.
+3. Bump the version header from `[Unreleased]` to `[vX.Y.Z] - YYYY-MM-DD`
+   (semver: `MAJOR` for breaking, `MINOR` for new feature, `PATCH` for
+   bug fix).
+4. Commit the version bump (`chore: release vX.Y.Z`).
+5. Tag: `git tag -s -a vX.Y.Z -m "vX.Y.Z"`.
+6. Push: `git push origin main && git push origin vX.Y.Z`.
+7. Done. No further CI/release steps in this repo.
 
 ## Boundaries
 
