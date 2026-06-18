@@ -157,11 +157,18 @@ Run "$0 [command] --help" for more details on a specific command.`
 	return strings.ReplaceAll(template, "$0", cmdName())
 }
 
+// Version is the skillforge CLI version. It is reported by the
+// cobra-managed `--version` flag (rootCmd.Version below). Bump on
+// each tagged release; the tag is the source of truth and this
+// string should be kept in sync at tag time.
+const Version = "v0.11.0"
+
 // rootCmd represents the base command.
 var rootCmd = &cobra.Command{
-	Use:   "skillforge",
-	Short: "Manage agent skills from git repositories",
-	Long:  rootLong(),
+	Use:     "skillforge",
+	Short:   "Manage agent skills from git repositories",
+	Long:    rootLong(),
+	Version: Version,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		// Configure viper
 		if cfgFile != "" {

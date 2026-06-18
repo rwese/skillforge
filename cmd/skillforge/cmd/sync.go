@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -441,25 +442,57 @@ func buildSkillCatalogFromRepos(repos map[string]config.RepoInfo) (map[string]Sk
 }
 
 // collectSkillNames returns a set of skill names installed at a path.
-// Returns nil if the directory doesn't exist.
+// Returns nil if the directory doesn't exist. Walks recursively so
+// nested-skill installs (e.g. <path>/architecture/event-sourced-commands)
+// appear under their slash-joined relative path.
 func collectSkillNames(path string) map[string]bool {
-	skills := make(map[string]bool)
-
-	entries, err := os.ReadDir(path)
-	if err != nil {
+	// Short-circuit on a missing root: callers treat nil as
+	// "invalid target" and skip it (see sync_installMissing).
+	if _, err := os.Stat(path); err != nil {
 		if os.IsNotExist(err) {
-			return nil // Directory doesn't exist - return nil to indicate invalid target
+			return nil
 		}
 		if verboseFlag {
-			fmt.Printf("[DEBUG] Error reading directory %s: %v\n", path, err)
+			fmt.Printf("[DEBUG] Error stating %s: %v\n", path, err)
 		}
-		return skills
+		return make(map[string]bool)
 	}
 
-	for _, entry := range entries {
-		// Count both directories and symlinks as skills
-		if entry.IsDir() || entry.Type()&os.ModeSymlink != 0 {
-			skills[entry.Name()] = true
+	skills := make(map[string]bool)
+
+	err := filepath.WalkDir(path, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if p == path {
+			return nil
+		}
+		// Only count symlinks or directories as skill installs.
+		isSymlink := d.Type()&os.ModeSymlink != 0
+		isDir := d.IsDir()
+		if !isSymlink && !isDir {
+			return nil
+		}
+		// For directories, skip ones without a .grimoire (category folders).
+		if isDir && !isSymlink {
+			if _, err := os.Stat(filepath.Join(p, ".grimoire")); err != nil {
+				return nil
+			}
+		}
+		rel, err := filepath.Rel(path, p)
+		if err != nil {
+			return nil
+		}
+		skills[filepath.ToSlash(rel)] = true
+		// Do not descend into an installed skill (skills never contain skills).
+		if isDir && !isSymlink {
+			return filepath.SkipDir
+		}
+		return nil
+	})
+	if err != nil {
+		if verboseFlag {
+			fmt.Printf("[DEBUG] Error walking %s: %v\n", path, err)
 		}
 	}
 

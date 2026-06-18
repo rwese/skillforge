@@ -1,6 +1,7 @@
 package search
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/rwese/skillforge/pkg/grimoire"
@@ -166,5 +167,61 @@ func TestSimpleKeywordSearchEmptySkills(t *testing.T) {
 	results := SimpleKeywordSearch([]grimoire.Skill{}, "test")
 	if len(results) != 0 {
 		t.Errorf("SimpleKeywordSearch() with empty skills returned %d results", len(results))
+	}
+}
+
+// TestMatchScoreNestedNameSegment verifies that a nested-skill Name
+// (e.g. "architecture/event-sourced-commands") can be matched by
+// EITHER its category segment or its leaf segment, so a query of
+// "architecture" finds the skill even though the full Name does
+// not start with "architecture".
+func TestMatchScoreNestedNameSegment(t *testing.T) {
+	skill := grimoire.Skill{
+		Name:        "architecture/event-sourced-commands",
+		Description: "ES+CQRS",
+	}
+
+	tests := []struct {
+		name     string
+		words    []string
+		minScore int
+	}{
+		{"match leaf segment", []string{"event-sourced"}, 5},
+		{"match leaf exact", []string{"event-sourced-commands"}, 10},
+		{"match category segment", []string{"architecture"}, 10},
+		{"match category prefix", []string{"arch"}, 5},
+		{"match description", []string{"cqrs"}, 1},
+		{"no match", []string{"kubernetes"}, 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			score := matchScore(skill, tt.words)
+			if score < tt.minScore {
+				t.Errorf("matchScore() = %d, want >= %d", score, tt.minScore)
+			}
+		})
+	}
+}
+
+// TestSimpleKeywordSearchFindsNestedSkill is the end-to-end
+// regression test: a query of "architecture" should return nested
+// skills whose Name starts with "architecture/" even though the
+// legacy matcher only saw the full slash-joined Name.
+func TestSimpleKeywordSearchFindsNestedSkill(t *testing.T) {
+	skills := []grimoire.Skill{
+		{Name: "architecture/event-sourced-commands"},
+		{Name: "architecture/multi-tenancy"},
+		{Name: "docker-build"},
+	}
+
+	results := SimpleKeywordSearch(skills, "architecture")
+	if len(results) != 2 {
+		t.Fatalf("SimpleKeywordSearch returned %d results, want 2: %#v", len(results), results)
+	}
+	for _, r := range results {
+		if !strings.HasPrefix(r.Name, "architecture/") {
+			t.Errorf("unexpected result Name = %q", r.Name)
+		}
 	}
 }

@@ -182,41 +182,34 @@ func LinkSkill(skill grimoire.Skill, targetPath string) error {
 }
 
 // ListInstalledSkillsSymlinks lists all skills in a target directory as symlinks.
-// Returns skills with resolved symlink targets.
+// Returns skills with resolved symlink targets. The walker descends
+// recursively so nested-skill layouts (e.g.
+// <target>/architecture/event-sourced-commands) are reported with
+// Skill.Name = "architecture/event-sourced-commands". Regular files
+// and plain directories (real dirs without a .grimoire) are skipped
+// or recursed into respectively; only symlinks are emitted.
 func ListInstalledSkillsSymlinks(targetPath string) ([]grimoire.Skill, error) {
 	var skills []grimoire.Skill
 
-	entries, err := os.ReadDir(targetPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return skills, nil
+	err := walkInstalledDirs(targetPath, func(rel, fullPath string, info os.FileInfo) error {
+		if info.Mode()&os.ModeSymlink == 0 {
+			return nil
 		}
-		return nil, err
-	}
-
-	for _, entry := range entries {
-		if !entry.IsDir() && entry.Type()&os.ModeSymlink == 0 {
-			continue
-		}
-
-		skillPath := filepath.Join(targetPath, entry.Name())
-
-		// Resolve symlink to get actual source
-		linkTarget, err := os.Readlink(skillPath)
+		linkTarget, err := os.Readlink(fullPath)
 		if err != nil {
-			// Not a symlink, skip
-			continue
+			return nil
 		}
-
-		// If relative symlink, resolve it
 		if !filepath.IsAbs(linkTarget) {
-			linkTarget = filepath.Join(filepath.Dir(skillPath), linkTarget)
+			linkTarget = filepath.Join(filepath.Dir(fullPath), linkTarget)
 		}
-
 		skills = append(skills, grimoire.Skill{
-			Name: entry.Name(),
+			Name: rel,
 			Path: linkTarget,
 		})
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	return skills, nil
@@ -253,37 +246,39 @@ type BrokenSymlink struct {
 }
 
 // FindBrokenSymlinks walks targetPath and returns every entry that is a
-// symlink whose target does not resolve. Regular files, real directories
-// (with or without a .grimoire), and valid symlinks are ignored. A
-// nonexistent targetPath yields a nil result with no error so callers
-// can treat "no target dir" the same as "no broken symlinks".
+// symlink whose target does not resolve. The walker descends recursively
+// so nested-skill symlinks (e.g.
+// <target>/architecture/event-sourced-commands) are found; their Name
+// is the path relative to targetPath, using forward slashes
+// ("architecture/event-sourced-commands"). Regular files, real
+// directories (with or without a .grimoire), and valid symlinks are
+// ignored. A nonexistent targetPath yields a nil result with no error
+// so callers can treat "no target dir" the same as "no broken
+// symlinks".
 func FindBrokenSymlinks(targetPath string) ([]BrokenSymlink, error) {
-	entries, err := os.ReadDir(targetPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
+	var broken []BrokenSymlink
+
+	err := walkInstalledDirs(targetPath, func(rel, fullPath string, _ os.FileInfo) error {
+		if !IsBrokenSymlink(fullPath) {
+			return nil
 		}
+		linkTarget, err := os.Readlink(fullPath)
+		if err != nil {
+			// Lstat said it's a symlink; if Readlink fails something
+			// is seriously wrong. Skip rather than abort the whole scan.
+			return nil
+		}
+		broken = append(broken, BrokenSymlink{
+			Name:       rel,
+			Path:       fullPath,
+			LinkTarget: linkTarget,
+		})
+		return nil
+	})
+	if err != nil {
 		return nil, err
 	}
 
-	var broken []BrokenSymlink
-	for _, entry := range entries {
-		skillPath := filepath.Join(targetPath, entry.Name())
-		if !IsBrokenSymlink(skillPath) {
-			continue
-		}
-		linkTarget, err := os.Readlink(skillPath)
-		if err != nil {
-			// Lstat said it's a symlink; if Readlink fails something is
-			// seriously wrong. Skip rather than abort the whole scan.
-			continue
-		}
-		broken = append(broken, BrokenSymlink{
-			Name:       entry.Name(),
-			Path:       skillPath,
-			LinkTarget: linkTarget,
-		})
-	}
 	return broken, nil
 }
 
@@ -307,62 +302,115 @@ func RellinkSkill(skill grimoire.Skill, targetPath string) error {
 }
 
 // ListInstalledSkills lists all installed skills in a target.
-// It includes both directories with .grimoire files and symlinks.
+// It includes both directories with .grimoire files and symlinks. The
+// walker descends recursively so nested-skill installs (e.g.
+// <target>/architecture/event-sourced-commands) are reported with
+// Skill.Name = "architecture/event-sourced-commands". Plain
+// directories without a .grimoire (category folders) are recursed
+// into; skills do not contain skills.
 func ListInstalledSkills(targetPath string) ([]grimoire.Skill, error) {
 	var skills []grimoire.Skill
 
-	entries, err := os.ReadDir(targetPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return skills, nil
-		}
-		return nil, err
-	}
-
-	for _, entry := range entries {
-		skillPath := filepath.Join(targetPath, entry.Name())
-		info, err := os.Lstat(skillPath)
-		if err != nil {
-			continue
-		}
-
-		// Handle symlinks
-		isSymlink := info.Mode()&os.ModeSymlink != 0
-		if isSymlink {
-			// For symlinks, resolve the actual path
-			linkTarget, err := os.Readlink(skillPath)
+	err := walkInstalledDirs(targetPath, func(rel, fullPath string, info os.FileInfo) error {
+		if info.Mode()&os.ModeSymlink != 0 {
+			linkTarget, err := os.Readlink(fullPath)
 			if err != nil {
-				continue
+				return nil
 			}
 			if !filepath.IsAbs(linkTarget) {
-				linkTarget = filepath.Join(filepath.Dir(skillPath), linkTarget)
+				linkTarget = filepath.Join(filepath.Dir(fullPath), linkTarget)
 			}
-
 			skills = append(skills, grimoire.Skill{
-				Name: entry.Name(),
+				Name: rel,
 				Path: linkTarget,
 			})
-			continue
+			return nil
 		}
 
-		// For directories, only include if they have a .grimoire file
-		if !entry.IsDir() {
-			continue
-		}
-
-		// Try to read grimoire metadata
-		g, err := ReadGrimoire(skillPath)
+		// Real directory with a .grimoire file (callback only fires
+		// for such directories); read the metadata.
+		g, err := ReadGrimoire(fullPath)
 		if err != nil || g == nil {
-			continue
+			return nil
 		}
-
 		skills = append(skills, grimoire.Skill{
-			Name:   entry.Name(),
-			Path:   skillPath,
+			Name:   rel,
+			Path:   fullPath,
 			Source: g.Source,
 			Commit: g.Commit,
 		})
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	return skills, nil
+}
+
+// walkInstalledDirs walks targetPath recursively and invokes visit
+// once per installed skill it finds. An installed skill is either:
+//
+//   - a symlink (valid or broken; the caller decides whether to
+//     report broken ones), or
+//   - a real directory that contains a .grimoire file.
+//
+// Plain directories without a .grimoire are category folders and are
+// recursed into; skills never contain other skills. Regular files
+// are ignored. The rel argument to visit is the path of the skill
+// relative to targetPath, using forward slashes; for a flat skill
+// it is the bare entry name ("docker") and for a nested skill it
+// includes the category ("architecture/event-sourced-commands"). A
+// nonexistent targetPath is silently treated as empty.
+func walkInstalledDirs(targetPath string, visit func(rel, fullPath string, info os.FileInfo) error) error {
+	return walkInstalledDirsFrom(targetPath, targetPath, visit)
+}
+
+// walkInstalledDirsFrom is the worker behind walkInstalledDirs.
+// baseTarget is the top-level walk target; the rel argument to
+// visit is always computed relative to baseTarget so nested-skill
+// names carry their full category path.
+func walkInstalledDirsFrom(baseTarget, dir string, visit func(rel, fullPath string, info os.FileInfo) error) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	for _, entry := range entries {
+		fullPath := filepath.Join(dir, entry.Name())
+		linfo, err := os.Lstat(fullPath)
+		if err != nil {
+			continue
+		}
+		if linfo.Mode()&os.ModeSymlink != 0 {
+			rel, relErr := filepath.Rel(baseTarget, fullPath)
+			if relErr != nil {
+				continue
+			}
+			if err := visit(filepath.ToSlash(rel), fullPath, linfo); err != nil {
+				return err
+			}
+			continue
+		}
+		if !entry.IsDir() {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(fullPath, ".grimoire")); err == nil {
+			rel, relErr := filepath.Rel(baseTarget, fullPath)
+			if relErr != nil {
+				continue
+			}
+			if err := visit(filepath.ToSlash(rel), fullPath, linfo); err != nil {
+				return err
+			}
+			continue
+		}
+		// Category folder: recurse one level deeper.
+		if err := walkInstalledDirsFrom(baseTarget, fullPath, visit); err != nil {
+			return err
+		}
+	}
+	return nil
 }

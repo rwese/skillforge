@@ -8,6 +8,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Nested-skill discovery: `repo.DiscoverSkills` now walks
+  `<repo>/skills` and `<repo>/.agents/skills` recursively. Any
+  directory containing `SKILL.md` (and no `.grimoire` marker) is a
+  skill, and `Skill.Name` is its path relative to the skills root
+  using forward slashes. A skill at
+  `<repo>/skills/architecture/event-sourced-commands` is therefore
+  named `architecture/event-sourced-commands`, while a flat skill at
+  `<repo>/skills/docker` keeps the bare name `docker`. The legacy
+  fallback (skills placed directly under `<repo>`) is preserved for
+  backwards compatibility.
+- Recursive `repo.ListInstalledSkills`,
+  `repo.ListInstalledSkillsSymlinks`, and `repo.FindBrokenSymlinks`
+  so installed-skill listings and broken-symlink scans discover
+  nested installs (`<target>/<category>/<name>`). The `Name` field
+  is the slash-joined relative path so catalog lookups match.
+- `cmd.collectSkillNames` walks recursively for the same reason;
+  nested installs are reported under their slash-joined relative
+  path in `sync --fix*` flows.
+
+### Changed
+- `search.matchScore` now matches each path segment of `Skill.Name`
+  independently. A nested name like `architecture/event-sourced-commands`
+  is matched by either its category or its leaf segment, so a query
+  of `architecture` finds the skill (previously the legacy matcher
+  only saw the full slash-joined Name).
+
+### Added (sync flow)
 - `sync --fix-broken-symlinks` to re-link broken skill symlinks in local
   and global targets. Broken symlinks whose names match a skill in the
   cache are removed and re-linked with an absolute path; broken symlinks

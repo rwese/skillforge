@@ -3,6 +3,8 @@ package cmd
 import (
 	"bytes"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -336,5 +338,60 @@ func TestFindMissingSkills(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestCollectSkillNamesNested is the regression test for
+// collectSkillNames' nested-skill discovery. It walks recursively
+// so a nested install under <path>/<category>/<name> is reported
+// under its slash-joined relative path. Plain category folders
+// (real dirs without a .grimoire) must be recursed into but not
+// reported as skills.
+func TestCollectSkillNamesNested(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Flat install: real dir with .grimoire.
+	flatDir := filepath.Join(tmpDir, "docker")
+	if err := os.MkdirAll(flatDir, 0755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(flatDir, ".grimoire"), []byte("[metadata]\ncommit = \"x\"\n"), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	// Nested install: real dir with .grimoire under a category folder.
+	nestedDir := filepath.Join(tmpDir, "architecture", "event-sourced-commands")
+	if err := os.MkdirAll(nestedDir, 0755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(nestedDir, ".grimoire"), []byte("[metadata]\ncommit = \"y\"\n"), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	// Nested symlink install.
+	linkSrc := filepath.Join(tmpDir, "ops-link-source")
+	if err := os.MkdirAll(linkSrc, 0755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(tmpDir, "ops"), 0755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.Symlink(linkSrc, filepath.Join(tmpDir, "ops", "deploy")); err != nil {
+		t.Fatalf("Symlink: %v", err)
+	}
+
+	skills := collectSkillNames(tmpDir)
+	wantNames := map[string]bool{
+		"docker":                              true,
+		"architecture/event-sourced-commands": true,
+		"ops/deploy":                          true,
+	}
+	if len(skills) != len(wantNames) {
+		t.Fatalf("collectSkillNames returned %d skills, want %d: got=%v", len(skills), len(wantNames), skills)
+	}
+	for name := range wantNames {
+		if !skills[name] {
+			t.Errorf("collectSkillNames missing %q (got: %v)", name, skills)
+		}
 	}
 }

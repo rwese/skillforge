@@ -3,6 +3,7 @@ package repo
 import (
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -936,5 +937,130 @@ func TestRellinkSkillCreatesWhenTargetMissing(t *testing.T) {
 	}
 	if !filepath.IsAbs(linkTarget) {
 		t.Errorf("RellinkSkill target = %q, want absolute", linkTarget)
+	}
+}
+
+// TestFindBrokenSymlinksNested is the regression test for nested
+// broken-symlink discovery. A nested skill (one whose install path
+// lives under a category folder) must be reported with Name equal
+// to its slash-joined relative path so the catalog lookup that
+// follows can find a matching source.
+func TestFindBrokenSymlinksNested(t *testing.T) {
+	tmpDir := t.TempDir()
+	categoryDir := filepath.Join(tmpDir, "architecture")
+	if err := os.MkdirAll(categoryDir, 0755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	// Broken nested symlink: dangling target under a category folder.
+	if err := os.Symlink(filepath.Join(tmpDir, "ghost"), filepath.Join(categoryDir, "event-sourced-commands")); err != nil {
+		t.Fatalf("Symlink: %v", err)
+	}
+	// Valid flat symlink that must NOT be reported (it's not broken).
+	realTarget := filepath.Join(tmpDir, "real")
+	if err := os.MkdirAll(realTarget, 0755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.Symlink(realTarget, filepath.Join(tmpDir, "valid")); err != nil {
+		t.Fatalf("Symlink: %v", err)
+	}
+
+	broken, err := FindBrokenSymlinks(tmpDir)
+	if err != nil {
+		t.Fatalf("FindBrokenSymlinks: %v", err)
+	}
+	if len(broken) != 1 {
+		t.Fatalf("FindBrokenSymlinks returned %d, want 1: %#v", len(broken), broken)
+	}
+	if broken[0].Name != "architecture/event-sourced-commands" {
+		t.Errorf("BrokenSymlink.Name = %q, want %q", broken[0].Name, "architecture/event-sourced-commands")
+	}
+	wantPath := filepath.Join(categoryDir, "event-sourced-commands")
+	if broken[0].Path != wantPath {
+		t.Errorf("BrokenSymlink.Path = %q, want %q", broken[0].Path, wantPath)
+	}
+}
+
+// TestListInstalledSkillsNested verifies that skill list returns
+// nested installs with their slash-joined relative name. Both
+// symlinked installs and copied (.grimoire) installs are covered.
+func TestListInstalledSkillsNested(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Nested symlink install.
+	linkSrc := filepath.Join(tmpDir, "cache", "event-sourced-commands")
+	if err := os.MkdirAll(linkSrc, 0755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	categoryDir := filepath.Join(tmpDir, "target", "architecture")
+	if err := os.MkdirAll(categoryDir, 0755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	absLinkSrc, err := filepath.Abs(linkSrc)
+	if err != nil {
+		t.Fatalf("Abs: %v", err)
+	}
+	if err := os.Symlink(absLinkSrc, filepath.Join(categoryDir, "event-sourced-commands")); err != nil {
+		t.Fatalf("Symlink: %v", err)
+	}
+
+	// Nested copied install (real dir with .grimoire).
+	copyDir := filepath.Join(tmpDir, "target", "ops", "deploy")
+	if err := os.MkdirAll(copyDir, 0755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := WriteGrimoire(copyDir, &grimoire.Grimoire{Version: 1, Source: "https://example.com/repo", Commit: "abc"}); err != nil {
+		t.Fatalf("WriteGrimoire: %v", err)
+	}
+
+	// Flat installed skill as a control: should also appear with its
+	// bare name.
+	flatDir := filepath.Join(tmpDir, "target", "langfuse")
+	if err := os.MkdirAll(flatDir, 0755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := WriteGrimoire(flatDir, &grimoire.Grimoire{Version: 1, Source: "https://example.com/repo", Commit: "def"}); err != nil {
+		t.Fatalf("WriteGrimoire: %v", err)
+	}
+
+	skills, err := ListInstalledSkills(filepath.Join(tmpDir, "target"))
+	if err != nil {
+		t.Fatalf("ListInstalledSkills: %v", err)
+	}
+	names := make([]string, 0, len(skills))
+	for _, s := range skills {
+		names = append(names, s.Name)
+	}
+	sort.Strings(names)
+	want := []string{
+		"architecture/event-sourced-commands",
+		"langfuse",
+		"ops/deploy",
+	}
+	if len(names) != len(want) {
+		t.Fatalf("ListInstalledSkills returned %d skills, want %d: got=%v", len(names), len(want), names)
+	}
+	for i, w := range want {
+		if names[i] != w {
+			t.Errorf("skill[%d].Name = %q, want %q (all: %v)", i, names[i], w, names)
+		}
+	}
+}
+
+// TestListInstalledSkillsSkipsCategoryFolders ensures category
+// folders (real dirs without a .grimoire) are recursed into but not
+// reported as skills themselves.
+func TestListInstalledSkillsSkipsCategoryFolders(t *testing.T) {
+	tmpDir := t.TempDir()
+	categoryDir := filepath.Join(tmpDir, "architecture")
+	if err := os.MkdirAll(categoryDir, 0755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	// Empty category: contains no skills, only the dir itself.
+	skills, err := ListInstalledSkills(tmpDir)
+	if err != nil {
+		t.Fatalf("ListInstalledSkills: %v", err)
+	}
+	if len(skills) != 0 {
+		t.Errorf("ListInstalledSkills returned %d skills, want 0: %#v", len(skills), skills)
 	}
 }
