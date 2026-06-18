@@ -694,3 +694,81 @@ func TestCopyDir(t *testing.T) {
 		}
 	}
 }
+
+func TestLinkSkillCreatesAbsoluteSymlink(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create a skill source directory.
+	src := filepath.Join(tmpDir, "src", "my-skill")
+	if err := os.MkdirAll(src, 0755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(src, "SKILL.md"), []byte("hello"), 0644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	// Create a target parent that itself is reached only through a symlink
+	// (e.g. agents config might point ~/.pi/skills elsewhere). A relative
+	// symlink under such a parent would resolve to the wrong place, so
+	// LinkSkill must always use an absolute target.
+	parentReal := filepath.Join(tmpDir, "parent-real")
+	if err := os.MkdirAll(parentReal, 0755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	parentLink := filepath.Join(tmpDir, "parent-link")
+	if err := os.Symlink(parentReal, parentLink); err != nil {
+		t.Fatalf("Symlink() error = %v", err)
+	}
+
+	targetPath := filepath.Join(parentLink, "my-skill")
+	skill := grimoire.Skill{Name: "my-skill", Path: src}
+
+	if err := LinkSkill(skill, targetPath); err != nil {
+		t.Fatalf("LinkSkill() error = %v", err)
+	}
+
+	linkTarget, err := os.Readlink(targetPath)
+	if err != nil {
+		t.Fatalf("Readlink() error = %v", err)
+	}
+	if !filepath.IsAbs(linkTarget) {
+		t.Errorf("LinkSkill target = %q, want absolute path", linkTarget)
+	}
+
+	// Resolve through the symlinked parent and confirm the link still points
+	// at the real source.
+	resolved, err := filepath.EvalSymlinks(targetPath)
+	if err != nil {
+		t.Fatalf("EvalSymlinks() error = %v", err)
+	}
+	wantResolved, err := filepath.EvalSymlinks(src)
+	if err != nil {
+		t.Fatalf("EvalSymlinks(src) error = %v", err)
+	}
+	if resolved != wantResolved {
+		t.Errorf("resolved target = %q, want %q", resolved, wantResolved)
+	}
+}
+
+func TestLinkSkillRejectsExistingTarget(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	src := filepath.Join(tmpDir, "src", "my-skill")
+	if err := os.MkdirAll(src, 0755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+
+	targetPath := filepath.Join(tmpDir, "parent", "my-skill")
+	if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	// Pre-create something at the target so LinkSkill must refuse.
+	if err := os.WriteFile(targetPath, []byte("x"), 0644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	skill := grimoire.Skill{Name: "my-skill", Path: src}
+	if err := LinkSkill(skill, targetPath); err == nil {
+		t.Fatal("LinkSkill() error = nil, want error for existing target")
+	}
+}

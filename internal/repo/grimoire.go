@@ -151,7 +151,9 @@ func RemoveSkill(targetPath string) error {
 
 // LinkSkill creates a symlink from targetPath to the skill's actual path.
 // targetPath is the full path where the symlink should be created (including skill name).
-// skill.Path is the source directory to link to.
+// skill.Path is the source directory to link to. The symlink always uses an
+// absolute path so it remains valid regardless of how the target directory
+// is reached (e.g. via a different symlink in the parent chain).
 func LinkSkill(skill grimoire.Skill, targetPath string) error {
 	// Ensure parent directory exists
 	parentDir := filepath.Dir(targetPath)
@@ -164,15 +166,15 @@ func LinkSkill(skill grimoire.Skill, targetPath string) error {
 		return fmt.Errorf("target path already exists: %s", targetPath)
 	}
 
-	// Create symlink
-	// Use relative path from target's directory to skill source
-	relPath, err := filepath.Rel(parentDir, skill.Path)
+	// Resolve the skill source to an absolute path. This matters when
+	// skill.Path itself is a relative path or contains symlinks we want
+	// to normalize before storing it in the new symlink target.
+	absSkillPath, err := filepath.Abs(skill.Path)
 	if err != nil {
-		// Fall back to absolute path
-		relPath = skill.Path
+		return fmt.Errorf("resolving absolute path for skill %q: %w", skill.Path, err)
 	}
 
-	if err := os.Symlink(relPath, targetPath); err != nil {
+	if err := os.Symlink(absSkillPath, targetPath); err != nil {
 		return fmt.Errorf("creating symlink: %w", err)
 	}
 
