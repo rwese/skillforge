@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.11.0] - 2026-06-18
+
 ### Added
 - Nested-skill discovery: `repo.DiscoverSkills` now walks
   `<repo>/skills` and `<repo>/.agents/skills` recursively. Any
@@ -26,15 +28,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `cmd.collectSkillNames` walks recursively for the same reason;
   nested installs are reported under their slash-joined relative
   path in `sync --fix*` flows.
-
-### Changed
-- `search.matchScore` now matches each path segment of `Skill.Name`
-  independently. A nested name like `architecture/event-sourced-commands`
-  is matched by either its category or its leaf segment, so a query
-  of `architecture` finds the skill (previously the legacy matcher
-  only saw the full slash-joined Name).
-
-### Added (sync flow)
 - `sync --fix-broken-symlinks` to re-link broken skill symlinks in local
   and global targets. Broken symlinks whose names match a skill in the
   cache are removed and re-linked with an absolute path; broken symlinks
@@ -42,6 +35,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   now also enables this step.
 - `repo.IsBrokenSymlink`, `repo.FindBrokenSymlinks`, and
   `repo.RellinkSkill` helpers in `internal/repo` for the fix flow.
+- `--version` flag (cobra-managed) reports the tagged release.
+
+### Changed
+- `search.matchScore` now matches each path segment of `Skill.Name`
+  independently. A nested name like `architecture/event-sourced-commands`
+  is matched by either its category or its leaf segment, so a query
+  of `architecture` finds the skill (previously the legacy matcher
+  only saw the full slash-joined Name).
 
 ### Fixed
 - `repo.IsBrokenSymlink` previously called `os.Readlink`, which always
