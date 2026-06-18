@@ -25,6 +25,9 @@ func TestSyncFlags(t *testing.T) {
 	if syncCmd.Flags().Lookup("fix-all") == nil {
 		t.Fatal("sync command missing --fix-all flag")
 	}
+	if syncCmd.Flags().Lookup("fix-broken-symlinks") == nil {
+		t.Fatal("sync command missing --fix-broken-symlinks flag")
+	}
 	if syncCmd.Flags().Lookup("diff") == nil {
 		t.Fatal("sync command missing --diff flag")
 	}

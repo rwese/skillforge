@@ -772,3 +772,169 @@ func TestLinkSkillRejectsExistingTarget(t *testing.T) {
 		t.Fatal("LinkSkill() error = nil, want error for existing target")
 	}
 }
+
+// TestIsBrokenSymlinkDetectsMissingTarget is a regression test for the
+// previous implementation, which called os.Readlink (always succeeds for
+// a valid symlink) and therefore reported *every* symlink as "not
+// broken". A symlink whose target has been deleted must be reported as
+// broken.
+func TestIsBrokenSymlinkDetectsMissingTarget(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create a target then remove it, leaving a dangling symlink.
+	realTarget := filepath.Join(tmpDir, "real")
+	if err := os.MkdirAll(realTarget, 0755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	linkPath := filepath.Join(tmpDir, "link")
+	if err := os.Symlink(realTarget, linkPath); err != nil {
+		t.Fatalf("Symlink() error = %v", err)
+	}
+
+	// Sanity: while the target exists, the link is not broken.
+	if IsBrokenSymlink(linkPath) {
+		t.Fatal("IsBrokenSymlink() = true while target exists")
+	}
+
+	// Now remove the target. The link must be reported as broken.
+	if err := os.RemoveAll(realTarget); err != nil {
+		t.Fatalf("RemoveAll() error = %v", err)
+	}
+	if !IsBrokenSymlink(linkPath) {
+		t.Fatal("IsBrokenSymlink() = false after target removed, want true")
+	}
+}
+
+func TestIsBrokenSymlinkRejectsRegularFiles(t *testing.T) {
+	tmpDir := t.TempDir()
+	regular := filepath.Join(tmpDir, "regular")
+	if err := os.WriteFile(regular, []byte("x"), 0644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	if IsBrokenSymlink(regular) {
+		t.Error("IsBrokenSymlink() = true for regular file, want false")
+	}
+}
+
+func TestIsBrokenSymlinkRejectsMissingPath(t *testing.T) {
+	if IsBrokenSymlink(filepath.Join(t.TempDir(), "does-not-exist")) {
+		t.Error("IsBrokenSymlink() = true for missing path, want false")
+	}
+}
+
+func TestFindBrokenSymlinks(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	realTarget := filepath.Join(tmpDir, "real-skill")
+	if err := os.MkdirAll(realTarget, 0755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+
+	// Three entries: a broken symlink, a valid symlink, and a regular
+	// directory. Only the first should be reported.
+	if err := os.Symlink(filepath.Join(tmpDir, "ghost"), filepath.Join(tmpDir, "broken")); err != nil {
+		t.Fatalf("Symlink() error = %v", err)
+	}
+	if err := os.Symlink(realTarget, filepath.Join(tmpDir, "valid")); err != nil {
+		t.Fatalf("Symlink() error = %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(tmpDir, "regular-dir"), 0755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+
+	broken, err := FindBrokenSymlinks(tmpDir)
+	if err != nil {
+		t.Fatalf("FindBrokenSymlinks() error = %v", err)
+	}
+	if len(broken) != 1 {
+		t.Fatalf("FindBrokenSymlinks() returned %d, want 1: %#v", len(broken), broken)
+	}
+	if broken[0].Name != "broken" {
+		t.Errorf("BrokenSymlink.Name = %q, want %q", broken[0].Name, "broken")
+	}
+}
+
+func TestFindBrokenSymlinksNonexistentDir(t *testing.T) {
+	broken, err := FindBrokenSymlinks(filepath.Join(t.TempDir(), "nope"))
+	if err != nil {
+		t.Fatalf("FindBrokenSymlinks() error = %v", err)
+	}
+	if len(broken) != 0 {
+		t.Errorf("FindBrokenSymlinks() = %#v, want empty for missing dir", broken)
+	}
+}
+
+func TestRellinkSkillReplacesBrokenSymlink(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Source for the new (absolute) link.
+	newSrc := filepath.Join(tmpDir, "new-src", "my-skill")
+	if err := os.MkdirAll(newSrc, 0755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(newSrc, "SKILL.md"), []byte("hi"), 0644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	// Existing broken symlink at the target.
+	targetDir := filepath.Join(tmpDir, "target")
+	if err := os.MkdirAll(targetDir, 0755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	targetPath := filepath.Join(targetDir, "my-skill")
+	if err := os.Symlink(filepath.Join(tmpDir, "ghost"), targetPath); err != nil {
+		t.Fatalf("Symlink() error = %v", err)
+	}
+
+	if err := RellinkSkill(grimoire.Skill{Name: "my-skill", Path: newSrc}, targetPath); err != nil {
+		t.Fatalf("RellinkSkill() error = %v", err)
+	}
+
+	// The new symlink must point to an absolute path that resolves to
+	// the new source.
+	linkTarget, err := os.Readlink(targetPath)
+	if err != nil {
+		t.Fatalf("Readlink() error = %v", err)
+	}
+	if !filepath.IsAbs(linkTarget) {
+		t.Errorf("RellinkSkill target = %q, want absolute", linkTarget)
+	}
+	resolved, err := filepath.EvalSymlinks(targetPath)
+	if err != nil {
+		t.Fatalf("EvalSymlinks() error = %v", err)
+	}
+	wantResolved, err := filepath.EvalSymlinks(newSrc)
+	if err != nil {
+		t.Fatalf("EvalSymlinks(src) error = %v", err)
+	}
+	if resolved != wantResolved {
+		t.Errorf("resolved target = %q, want %q", resolved, wantResolved)
+	}
+}
+
+func TestRellinkSkillCreatesWhenTargetMissing(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	src := filepath.Join(tmpDir, "src", "skill")
+	if err := os.MkdirAll(src, 0755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+
+	targetDir := filepath.Join(tmpDir, "target")
+	if err := os.MkdirAll(targetDir, 0755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	targetPath := filepath.Join(targetDir, "skill")
+
+	if err := RellinkSkill(grimoire.Skill{Name: "skill", Path: src}, targetPath); err != nil {
+		t.Fatalf("RellinkSkill() error = %v", err)
+	}
+
+	linkTarget, err := os.Readlink(targetPath)
+	if err != nil {
+		t.Fatalf("Readlink() error = %v", err)
+	}
+	if !filepath.IsAbs(linkTarget) {
+		t.Errorf("RellinkSkill target = %q, want absolute", linkTarget)
+	}
+}

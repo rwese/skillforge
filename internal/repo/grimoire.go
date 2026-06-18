@@ -222,7 +222,8 @@ func ListInstalledSkillsSymlinks(targetPath string) ([]grimoire.Skill, error) {
 	return skills, nil
 }
 
-// IsBrokenSymlink checks if a path is a broken symlink.
+// IsBrokenSymlink reports whether path is a symlink whose target does not
+// resolve to an existing path. Non-symlinks and missing paths return false.
 func IsBrokenSymlink(path string) bool {
 	info, err := os.Lstat(path)
 	if err != nil {
@@ -231,9 +232,78 @@ func IsBrokenSymlink(path string) bool {
 	if info.Mode()&os.ModeSymlink == 0 {
 		return false
 	}
-	// Try to read the target
-	_, err = os.Readlink(path)
+	// os.Stat follows the symlink. If the target is missing, it returns
+	// an error (typically ENOENT or ENOTDIR). os.Readlink cannot detect
+	// a broken target because it only returns the link string.
+	_, err = os.Stat(path)
 	return err != nil
+}
+
+// BrokenSymlink describes a symlink in a target directory whose target
+// does not resolve to an existing path.
+type BrokenSymlink struct {
+	// Name is the entry name in the target directory (typically the skill
+	// name the agent uses to address the link).
+	Name string
+	// Path is the absolute path of the symlink on disk.
+	Path string
+	// LinkTarget is the raw target string the symlink was created with
+	// (unresolved, exactly as stored in the filesystem).
+	LinkTarget string
+}
+
+// FindBrokenSymlinks walks targetPath and returns every entry that is a
+// symlink whose target does not resolve. Regular files, real directories
+// (with or without a .grimoire), and valid symlinks are ignored. A
+// nonexistent targetPath yields a nil result with no error so callers
+// can treat "no target dir" the same as "no broken symlinks".
+func FindBrokenSymlinks(targetPath string) ([]BrokenSymlink, error) {
+	entries, err := os.ReadDir(targetPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	var broken []BrokenSymlink
+	for _, entry := range entries {
+		skillPath := filepath.Join(targetPath, entry.Name())
+		if !IsBrokenSymlink(skillPath) {
+			continue
+		}
+		linkTarget, err := os.Readlink(skillPath)
+		if err != nil {
+			// Lstat said it's a symlink; if Readlink fails something is
+			// seriously wrong. Skip rather than abort the whole scan.
+			continue
+		}
+		broken = append(broken, BrokenSymlink{
+			Name:       entry.Name(),
+			Path:       skillPath,
+			LinkTarget: linkTarget,
+		})
+	}
+	return broken, nil
+}
+
+// RellinkSkill removes any existing entry at targetPath and creates a new
+// symlink to skill.Path using an absolute path. This is the repair
+// primitive used when an existing skill symlink is broken (typically
+// because the project containing the link was moved while the link was
+// still a relative path).
+//
+// RellinkSkill deliberately does NOT recurse: it only removes targetPath
+// itself, so it is safe to call on a single skill link. To remove a
+// real directory, the caller should use RemoveSkill.
+func RellinkSkill(skill grimoire.Skill, targetPath string) error {
+	// Remove the existing entry. os.Remove works for symlinks, regular
+	// files, and empty directories. A non-existent path is fine (we are
+	// about to create the link either way).
+	if err := os.Remove(targetPath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("removing existing entry at %s: %w", targetPath, err)
+	}
+	return LinkSkill(skill, targetPath)
 }
 
 // ListInstalledSkills lists all installed skills in a target.

@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `sync --fix-broken-symlinks` to re-link broken skill symlinks in local
+  and global targets. Broken symlinks whose names match a skill in the
+  cache are removed and re-linked with an absolute path; broken symlinks
+  with no matching skill are reported and left in place. `sync --fix-all`
+  now also enables this step.
+- `repo.IsBrokenSymlink`, `repo.FindBrokenSymlinks`, and
+  `repo.RellinkSkill` helpers in `internal/repo` for the fix flow.
+
+### Fixed
+- `repo.IsBrokenSymlink` previously called `os.Readlink`, which always
+  succeeds for a valid symlink and therefore reported *every* symlink
+  as not broken. It now calls `os.Stat` (which follows the link) so a
+  dangling target is correctly identified.
+- `sync --fix-broken-symlinks` repairs relative symlinks created by
+  the previous `LinkSkill` (e.g. when a project like
+  `git.void.cold.at/nope-at/Devops` is moved to a new parent
+  directory and the relative paths no longer resolve).
+
 ## [v0.10.1] - 2026-06-04
 
 ### Fixed

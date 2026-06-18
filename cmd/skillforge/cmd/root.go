@@ -117,6 +117,9 @@ Supports multiple agents via extensible target system with auto-detect config sc
   $0 sync            # Preview what would change
   $0 sync --fix-all  # Apply repo and agent updates
 
+  # Re-link broken skill symlinks (e.g. after a project was moved)
+  $0 sync --fix-broken-symlinks
+
   # Check installed skills
   $0 skill list
   $0 skill list --agent pi
@@ -145,6 +148,7 @@ Supports multiple agents via extensible target system with auto-detect config sc
   $0 skill install git-fu --agent pi
   $0 skill remove git-fu --agent pi
   $0 sync --agent pi --fix-outofsync-agents
+  $0 sync --fix-broken-symlinks
   $0 target list
 
 ═══════════════════════════════════════════════════════════════════════════════

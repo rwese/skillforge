@@ -11,6 +11,7 @@ go test ./... -cover                       # Coverage
 go mod tidy                                # Update dependencies
 ./skillforge sync                          # Check global target sync
 ./skillforge sync --fix-all                # Update repos and fix global target sync
+./skillforge sync --fix-broken-symlinks    # Re-link broken skill symlinks (local+global)
 ```
 
 ## Structure
@@ -43,7 +44,7 @@ skillforge/
 - `target.globalPath` is the legacy global directory.
 - `target.globalPaths` is a named map of additional global directories.
 - If `globalPaths` is empty, treat `globalPath` as named `default`.
-- `sync` is global-only and read-only by default; `--fix-sync-repos` updates repos, `--fix-outofsync-agents` links missing skills, and `--fix-all` applies both.
+- `sync` is global-only and read-only by default; `--fix-sync-repos` updates repos, `--fix-outofsync-agents` links missing skills, `--fix-broken-symlinks` re-links broken skill symlinks in any target (local or global) using an absolute path into the cache, and `--fix-all` applies all three.
 - `setup` uses `internal/agents` and `agents.toml`; do not assume that path drives `skill` commands.
 - The on-disk git cache is a single shared directory. The effective `cache.path` is: local override > global override > default. All commands that read or write the cache (`repo add/list/remove/update`, `skill install`, `skill search`, completions, `sync`) must go through `config.EffectiveCachePath` (file-based) or `config.EffectiveCachePathFromConfigs` (in-memory) — never read `cfg.Cache.Path` directly, since `Load()` pre-populates it with the default and that hides whether the user actually set the field.
 

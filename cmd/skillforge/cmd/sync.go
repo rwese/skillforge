@@ -30,13 +30,17 @@ var syncCmd = &cobra.Command{
 	Short: "Sync repositories and install skills",
 	Long: `Sync repositories and install missing skills.
 
-This command performs up to two operations:
-1. Checks global targets for missing skills
-2. With fix flags, updates cached repositories and installs missing skills as symlinks
+This command performs up to three operations:
+1. Checks cached repositories for remote changes
+2. With --fix-outofsync-agents, links any missing skills to global targets
+3. With --fix-broken-symlinks, re-links broken skill symlinks in any target
+   (local or global) using an absolute path into the cache
 
 Skills are always linked to the latest version from cached repositories.
-By default, sync is read-only. Use --fix-sync-repos to update cached repositories,
---fix-outofsync-agents to link missing skills, or --fix-all for both.`,
+By default, sync is read-only. Use --fix-sync-repos to update cached
+repositories, --fix-outofsync-agents to link missing skills,
+--fix-broken-symlinks to re-link broken symlinks, or --fix-all for
+everything that can be fixed.`,
 	RunE: runSync,
 }
 
@@ -45,6 +49,7 @@ var (
 	syncFixOutofsyncAgentsFlag bool
 	syncFixReposFlag           bool
 	syncFixAllFlag             bool
+	syncFixBrokenSymlinksFlag  bool
 	syncDiffFlag               bool
 )
 
@@ -52,7 +57,8 @@ func init() {
 	rootCmd.AddCommand(syncCmd)
 	syncCmd.Flags().BoolVar(&syncFixOutofsyncAgentsFlag, "fix-outofsync-agents", false, "Install missing skill links across configured agents")
 	syncCmd.Flags().BoolVar(&syncFixReposFlag, "fix-sync-repos", false, "Update cached repositories after checking remote changes")
-	syncCmd.Flags().BoolVar(&syncFixAllFlag, "fix-all", false, "Apply repository updates and missing agent skill links")
+	syncCmd.Flags().BoolVar(&syncFixBrokenSymlinksFlag, "fix-broken-symlinks", false, "Re-link broken skill symlinks in local and global targets to absolute paths in the cache")
+	syncCmd.Flags().BoolVar(&syncFixAllFlag, "fix-all", false, "Apply repository updates, missing agent skill links, and broken symlink fixes")
 	syncCmd.Flags().BoolVar(&syncDiffFlag, "diff", false, "Show incoming remote commit and file changes")
 	syncCmd.Flags().StringVarP(&syncAgentFlag, "agent", "a", "", "Sync only specific agent (pi, codex, claude)")
 }
@@ -71,6 +77,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 	cache := repo.NewCache(config.ExpandPath(cacheConfig.Path))
 	fixRepos := syncFixReposFlag || syncFixAllFlag
 	fixAgents := syncFixOutofsyncAgentsFlag || syncFixAllFlag
+	fixBrokenSymlinks := syncFixBrokenSymlinksFlag || syncFixAllFlag
 	if fixRepos {
 		fmt.Println("=== Syncing repositories ===")
 	} else {
@@ -82,6 +89,12 @@ func runSync(cmd *cobra.Command, args []string) error {
 	fmt.Println()
 	if err := runAgentSync(cmd, args, fixAgents); err != nil {
 		return fmt.Errorf("agent sync failed: %w", err)
+	}
+
+	// Step 3: Re-link broken symlinks (in both local and global targets).
+	fmt.Println()
+	if err := runBrokenSymlinkFix(cmd, args, fixBrokenSymlinks); err != nil {
+		return fmt.Errorf("broken symlink check failed: %w", err)
 	}
 
 	return nil
@@ -383,6 +396,17 @@ type SkillInfo struct {
 
 // buildSkillCatalog builds a map of all available skills from cached repos.
 func buildSkillCatalog(cfg *config.Config) (map[string]SkillInfo, error) {
+	return buildSkillCatalogFromRepos(cfg.Repos)
+}
+
+// buildSkillCatalogFromRepos builds the skill catalog from an explicit map
+// of repos. The cache is resolved via the effective cache path (local
+// override > global override > default), so the same on-disk cache is
+// consulted regardless of which scope owns each repo entry. Repos are
+// iterated in Go's map order, but the catalog is name-keyed, so callers
+// that need deterministic precedence should sort or merge the input
+// before calling.
+func buildSkillCatalogFromRepos(repos map[string]config.RepoInfo) (map[string]SkillInfo, error) {
 	cachePath, err := config.NewLoader(config.ScopeGlobal).EffectiveCachePath()
 	if err != nil {
 		return nil, err
@@ -390,7 +414,7 @@ func buildSkillCatalog(cfg *config.Config) (map[string]SkillInfo, error) {
 	cache := repo.NewCache(config.ExpandPath(cachePath))
 	catalog := make(map[string]SkillInfo)
 
-	for repoName, info := range cfg.Repos {
+	for repoName, info := range repos {
 		if !cache.Exists(repoName) {
 			continue
 		}
@@ -469,4 +493,177 @@ func findMissingSkills(installedSkills map[string]map[string]bool, catalog map[s
 	}
 
 	return missingByTarget
+}
+
+// brokenSymlinkScanTarget is one physical directory to scan for broken
+// symlinks, plus a human-readable label for reporting.
+type brokenSymlinkScanTarget struct {
+	path  string
+	label string
+}
+
+// collectBrokenSymlinkScanTargets returns every local and global target
+// directory that sync should walk for broken symlinks, filtered by the
+// --agent flag. Local targets are only included when the current
+// working directory is inside a git repository (the same precondition
+// `skill install -s local` requires).
+func collectBrokenSymlinkScanTargets() ([]brokenSymlinkScanTarget, error) {
+	globalCfg, err := loadConfigScope(config.ScopeGlobal)
+	if err != nil {
+		return nil, err
+	}
+	localCfg, err := loadConfigScope(config.ScopeLocal)
+	localConfigExists := config.DetectLocalPath() != ""
+	localGitRoot := config.DetectGitRoot()
+
+	var targets []brokenSymlinkScanTarget
+
+	// Global targets: every named global directory of every enabled
+	// target that the --agent filter allows.
+	for targetName, target := range globalCfg.Targets {
+		if syncAgentFlag != "" && syncAgentFlag != targetName {
+			continue
+		}
+		if !target.Enabled {
+			continue
+		}
+		globalPaths := resolvedGlobalPaths(target)
+		globalNames := make([]string, 0, len(globalPaths))
+		for globalName := range globalPaths {
+			globalNames = append(globalNames, globalName)
+		}
+		sort.Strings(globalNames)
+		for _, globalName := range globalNames {
+			targets = append(targets, brokenSymlinkScanTarget{
+				path:  config.ExpandPath(globalPaths[globalName]),
+				label: fmt.Sprintf("%s/global:%s", targetName, globalName),
+			})
+		}
+	}
+
+	// Local targets: only when the cwd is inside a git repository.
+	if localGitRoot != "" {
+		localTargets := localTargetsForScope(globalCfg.Targets, localCfg, localConfigExists)
+		names := make([]string, 0, len(localTargets))
+		for name := range localTargets {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		for _, targetName := range names {
+			if syncAgentFlag != "" && syncAgentFlag != targetName {
+				continue
+			}
+			target := localTargets[targetName]
+			if !target.Enabled || target.LocalPath == "" {
+				continue
+			}
+			targets = append(targets, brokenSymlinkScanTarget{
+				path:  resolveLocalSkillDir(target.LocalPath, localGitRoot),
+				label: fmt.Sprintf("%s/local", targetName),
+			})
+		}
+	}
+
+	return targets, nil
+}
+
+// runBrokenSymlinkFix walks every enabled local and global target
+// directory, finds skill symlinks whose targets no longer resolve, and
+// re-links them from the cache using an absolute path. Broken symlinks
+// with no matching skill in the catalog are reported and left in place
+// (the user can `skill remove` them explicitly). When fix is false (or
+// --dry-run is set) the function only reports.
+func runBrokenSymlinkFix(cmd *cobra.Command, args []string, fixBrokenSymlinks bool) error {
+	fmt.Println("=== Broken symlink check ===")
+
+	// Catalog: consider repos from BOTH local and global configs. The
+	// on-disk cache is a single shared directory, so a skill cloned by
+	// a local repo can also be the match for a global-target link (and
+	// vice versa). When both scopes define the same repo name, local
+	// takes precedence.
+	globalCfg, err := loadConfigScope(config.ScopeGlobal)
+	if err != nil {
+		return err
+	}
+	localCfg, _ := loadConfigScope(config.ScopeLocal)
+	mergedRepos := make(map[string]config.RepoInfo, len(globalCfg.Repos))
+	for name, info := range globalCfg.Repos {
+		mergedRepos[name] = info
+	}
+	if localCfg != nil {
+		for name, info := range localCfg.Repos {
+			mergedRepos[name] = info
+		}
+	}
+	catalog, err := buildSkillCatalogFromRepos(mergedRepos)
+	if err != nil {
+		return fmt.Errorf("building skill catalog: %w", err)
+	}
+
+	scanTargets, err := collectBrokenSymlinkScanTargets()
+	if err != nil {
+		return err
+	}
+	if len(scanTargets) == 0 {
+		fmt.Println("  No targets to scan.")
+		return nil
+	}
+
+	var totalBroken, totalRelinked, totalOrphaned int
+	for _, st := range scanTargets {
+		if _, err := os.Stat(st.path); err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return fmt.Errorf("stat %s: %w", st.path, err)
+		}
+
+		broken, err := repo.FindBrokenSymlinks(st.path)
+		if err != nil {
+			return fmt.Errorf("scanning %s (%s): %w", st.label, st.path, err)
+		}
+		for _, b := range broken {
+			totalBroken++
+			skillInfo, found := catalog[b.Name]
+			if !found {
+				totalOrphaned++
+				fmt.Printf("  ! %s: broken symlink %q -> %q (no matching skill in cache, leaving in place)\n", st.label, b.Name, b.LinkTarget)
+				continue
+			}
+
+			if !fixBrokenSymlinks || dryRunFlag {
+				action := "would re-link"
+				if dryRunFlag {
+					action = "DRY-RUN: would re-link"
+				}
+				fmt.Printf("  • %s: %s %q -> %s\n", st.label, action, b.Name, skillInfo.Skill.Path)
+				continue
+			}
+
+			if err := repo.RellinkSkill(skillInfo.Skill, b.Path); err != nil {
+				return fmt.Errorf("re-linking %q in %s: %w", b.Name, st.label, err)
+			}
+			totalRelinked++
+			fmt.Printf("  ✓ %s: re-linked %q -> %s\n", st.label, b.Name, skillInfo.Skill.Path)
+		}
+	}
+
+	if totalBroken == 0 {
+		fmt.Println("  No broken symlinks found.")
+		return nil
+	}
+
+	summary := fmt.Sprintf("  Found %d broken symlink(s)", totalBroken)
+	if totalRelinked > 0 {
+		summary += fmt.Sprintf("; re-linked %d", totalRelinked)
+	}
+	if totalOrphaned > 0 {
+		summary += fmt.Sprintf("; %d orphaned (no matching skill in cache, left in place)", totalOrphaned)
+	}
+	fmt.Println(summary)
+
+	if !fixBrokenSymlinks && totalBroken-totalOrphaned > 0 {
+		fmt.Println("  Use --fix-broken-symlinks to re-link.")
+	}
+	return nil
 }
