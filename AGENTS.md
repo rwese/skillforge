@@ -39,7 +39,8 @@ skillforge/
 
 ## Key Implementation Notes
 
-- Skill discovery checks `skills/` and `.agents/skills/` in cached repos.
+- Skill discovery walks `<repo>/skills/` and `<repo>/.agents/skills/` recursively. A directory containing `SKILL.md` (and no `.grimoire` marker) is a skill; `Skill.Name` is its path relative to the skills root using forward slashes. A flat skill at `<repo>/skills/foo` is named `foo`; a nested skill at `<repo>/skills/architecture/event-sourced-commands` is named `architecture/event-sourced-commands`. The walker stops descending once a skill directory is found (skills never contain skills). The legacy fallback that scans `<repo>/<name>/` directly (one level deep) is preserved for caches that pre-date the `skills/` wrapper.
+- All consumer code paths (`ListInstalledSkills`, `ListInstalledSkillsSymlinks`, `FindBrokenSymlinks`, `collectSkillNames`, `LinkSkill`) walk recursively with the same stop-at-skill-boundary logic; `Skill.Name` is always the slash-joined relative path. `search.matchScore` matches each path segment of `Skill.Name` independently so a query of `architecture` finds `architecture/event-sourced-commands`.
 - Active install/list/remove behavior uses `config.Target` from `config.toml`.
 - `target.globalPath` is the legacy global directory.
 - `target.globalPaths` is a named map of additional global directories.
