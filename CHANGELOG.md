@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- `repo.Pull` now fast-forwards the local cache branch to
+  `origin/<branch>` via `git reset --hard` instead of plain
+  `git pull`. The cache is a shallow clone and `Fetch` uses
+  `--depth 1`, so the local branch and the freshly-fetched tip
+  could be git-unaware of any common ancestor and `git pull`
+  would fail with "Need to specify how to reconcile divergent
+  branches", leaving the cache permanently stale. `skillforge
+  sync --fix-sync-repos` and `skillforge repo update` now reliably
+  advance a stale cache to the latest remote tip.
+
+### Added
+- `skill load <name>` copies a cached skill into a fresh temp
+  directory and prints its `SKILL.md`. The temp dir is laid out as
+  `/tmp/skillforge-<hash>/<skill-name>/` where `<hash>` is the first
+  three bytes of the SHA256 of the current working directory,
+  formatted as `xxx-xxx` for readability. Nested skill names keep
+  their category path on disk, so
+  `skillforge skill load architecture/event-sourced-commands` lands
+  at `/tmp/skillforge-<hash>/architecture/event-sourced-commands/`.
+  The directory is left in place; the user is responsible for
+  removing it. Useful for inspecting or handing off a skill without
+  linking it into an agent's skills directory.
+
 ## [v0.11.0] - 2026-06-18
 
 ### Added

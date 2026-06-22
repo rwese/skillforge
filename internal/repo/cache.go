@@ -63,14 +63,30 @@ func (c *Cache) Fetch(name string) error {
 	return cmd.Run()
 }
 
-// Pull pulls updates for a cached repository.
+// Pull advances the cached repository's local branch to origin/<branch>.
+//
+// The cache is always a shallow clone (see Clone) and Fetch uses
+// --depth 1, so the local branch and the freshly-fetched origin/<branch>
+// tip can be git-unaware of any common ancestor (merge-base returns
+// nothing). Plain `git pull` then fails with
+//
+//	fatal: Need to specify how to reconcile divergent branches.
+//
+// even though the histories are conceptually linear. We bypass that
+// ambiguity by explicitly resetting the local branch to the
+// already-fetched origin/<branch> tip. Callers must run Fetch first.
 func (c *Cache) Pull(name string) error {
 	targetDir := filepath.Join(c.Path, name)
 	if _, err := os.Stat(targetDir); os.IsNotExist(err) {
 		return fmt.Errorf("repository %q not found in cache", name)
 	}
 
-	cmd := exec.Command("git", "-C", targetDir, "pull")
+	branch, err := currentBranch(targetDir)
+	if err != nil {
+		return err
+	}
+
+	cmd := exec.Command("git", "-C", targetDir, "reset", "--hard", "origin/"+branch)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
@@ -155,6 +171,23 @@ func (c *Cache) Exists(name string) bool {
 // Path returns the full path to a cached repository.
 func (c *Cache) PathFor(name string) string {
 	return filepath.Join(c.Path, name)
+}
+
+// currentBranch returns the name of the currently checked-out branch in
+// dir. Pull assumes the cache repo is on a real branch (not detached
+// HEAD); callers that operate on detached HEADs should call Clone or
+// re-checkout a branch first.
+func currentBranch(dir string) (string, error) {
+	cmd := exec.Command("git", "-C", dir, "rev-parse", "--abbrev-ref", "HEAD")
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("reading current branch in %s: %w", dir, err)
+	}
+	branch := strings.TrimSpace(string(out))
+	if branch == "HEAD" {
+		return "", fmt.Errorf("repository %s is in detached HEAD state", dir)
+	}
+	return branch, nil
 }
 
 // repoName extracts the repository name from a URL.
