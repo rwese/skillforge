@@ -1,6 +1,6 @@
 ---
 name: skillforge
-description: Manage agent skills with the SkillForge CLI. Use when installing, configuring, searching for, loading, or removing agent skills from cached git repositories across multiple agents (pi, codex, claude). Covers setup, repo caching, skill discovery, install, search, load, sync, and target configuration.
+description: search skills and load skills for various tasks.
 ---
 
 # SkillForge
