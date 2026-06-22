@@ -121,6 +121,117 @@ func TestResolveLocalSkillDirKeepsAbsolutePaths(t *testing.T) {
 	}
 }
 
+func TestLocalPathResolvableRelativeWithoutGitRoot(t *testing.T) {
+	// Relative local paths cannot be resolved when the cwd is not inside a
+	// git repository — there is no base directory for the resolver.
+	got := localPathResolvable(config.Target{
+		Enabled:   true,
+		LocalPath: ".agents/skills",
+	}, "")
+	if got {
+		t.Fatalf("localPathResolvable() = true, want false for relative localPath without git root")
+	}
+}
+
+func TestLocalPathResolvableRelativeWithGitRoot(t *testing.T) {
+	got := localPathResolvable(config.Target{
+		Enabled:   true,
+		LocalPath: ".agents/skills",
+	}, "/repo/root")
+	if !got {
+		t.Fatalf("localPathResolvable() = false, want true for relative localPath with git root")
+	}
+}
+
+func TestLocalPathResolvableAbsoluteWithoutGitRoot(t *testing.T) {
+	// Absolute local paths are self-locating, so they do not need a git
+	// root. This is the case that lets `skill install -s local` succeed
+	// from a non-git directory when the target uses an absolute localPath.
+	got := localPathResolvable(config.Target{
+		Enabled:   true,
+		LocalPath: "/abs/.agents/skills",
+	}, "")
+	if !got {
+		t.Fatalf("localPathResolvable() = false, want true for absolute localPath without git root")
+	}
+}
+
+func TestLocalPathResolvableDisabled(t *testing.T) {
+	got := localPathResolvable(config.Target{
+		Enabled:   false,
+		LocalPath: ".agents/skills",
+	}, "/repo/root")
+	if got {
+		t.Fatalf("localPathResolvable() = true, want false for disabled target")
+	}
+}
+
+func TestLocalPathResolvableMissingLocalPath(t *testing.T) {
+	got := localPathResolvable(config.Target{
+		Enabled:   true,
+		LocalPath: "",
+	}, "/repo/root")
+	if got {
+		t.Fatalf("localPathResolvable() = true, want false for target without localPath")
+	}
+}
+
+func TestLocalTargetConfiguredFindsGlobalEntry(t *testing.T) {
+	globalCfg := &config.Config{
+		Targets: map[string]config.Target{
+			"agents": {
+				Name:      "agents",
+				LocalPath: ".agents/skills",
+				Enabled:   true,
+			},
+		},
+	}
+
+	_, ok := localTargetConfigured("agents", nil, false, globalCfg)
+	if !ok {
+		t.Fatalf("localTargetConfigured() = false, want true for global entry")
+	}
+}
+
+func TestLocalTargetConfiguredPrefersLocalEntry(t *testing.T) {
+	globalCfg := &config.Config{
+		Targets: map[string]config.Target{
+			"agents": {
+				Name:      "agents",
+				LocalPath: ".agents/skills",
+				Enabled:   true,
+			},
+		},
+	}
+	localCfg := &config.Config{
+		Targets: map[string]config.Target{
+			"agents": {
+				Name:      "agents",
+				LocalPath: ".custom-agents/skills",
+				Enabled:   true,
+			},
+		},
+	}
+
+	got, ok := localTargetConfigured("agents", localCfg, true, globalCfg)
+	if !ok {
+		t.Fatalf("localTargetConfigured() = false, want true")
+	}
+	if got.LocalPath != ".custom-agents/skills" {
+		t.Fatalf("localTargetConfigured().LocalPath = %q, want %q (local entry should take precedence)", got.LocalPath, ".custom-agents/skills")
+	}
+}
+
+func TestLocalTargetConfiguredRejectsMissingTarget(t *testing.T) {
+	globalCfg := &config.Config{
+		Targets: map[string]config.Target{},
+	}
+	_, ok := localTargetConfigured("nope", nil, false, globalCfg)
+	if ok {
+		t.Fatalf("localTargetConfigured() = true, want false for missing target")
+	}
+}
+
 func TestLocalTargetsForScopeUsesGlobalTargetsWithoutLocalConfig(t *testing.T) {
 	globalTargets := map[string]config.Target{
 		"agents": {

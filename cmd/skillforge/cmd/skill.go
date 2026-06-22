@@ -273,13 +273,61 @@ func resolveLocalSkillDir(localPath, gitRoot string) string {
 }
 
 func appendLocalInstallPath(paths []InstallPath, targetName string, target config.Target, gitRoot string) []InstallPath {
-	if !target.Enabled || target.LocalPath == "" || gitRoot == "" {
+	if !target.Enabled || target.LocalPath == "" {
+		return paths
+	}
+	// Absolute local paths are self-locating; they don't need a git root.
+	expanded := config.ExpandPath(target.LocalPath)
+	if filepath.IsAbs(expanded) {
+		return append(paths, InstallPath{
+			Path:  filepath.Clean(expanded),
+			Label: fmt.Sprintf("%s (local)", targetName),
+		})
+	}
+	// Relative local paths require a git root for resolution.
+	if gitRoot == "" {
 		return paths
 	}
 	return append(paths, InstallPath{
 		Path:  resolveLocalSkillDir(target.LocalPath, gitRoot),
 		Label: fmt.Sprintf("%s (local)", targetName),
 	})
+}
+
+// localTargetConfigured reports whether the named target is configured and
+// enabled with a `localPath` in either the local or global config. This is
+// used to distinguish "the target doesn't exist or is disabled" (where we keep
+// the existing generic error) from "the target is configured for local scope
+// but we cannot reach it from this directory" (where we want to explain the
+// actual reason).
+func localTargetConfigured(targetName string, localCfg *config.Config, localConfigExists bool, globalCfg *config.Config) (config.Target, bool) {
+	if localConfigExists && localCfg != nil {
+		if t, ok := localCfg.Targets[targetName]; ok && t.Enabled && t.LocalPath != "" {
+			return t, true
+		}
+	}
+	if globalCfg != nil {
+		if t, ok := globalCfg.Targets[targetName]; ok && t.Enabled && t.LocalPath != "" {
+			return t, true
+		}
+	}
+	return config.Target{}, false
+}
+
+// localPathResolvable reports whether a target's localPath can actually be
+// resolved in the current environment. Absolute localPath values are
+// self-locating; relative ones require a git root so the resolver has a base
+// directory. Returning false here means `appendLocalInstallPath` (and the
+// remove equivalent) will silently drop the target, even though the target is
+// configured and enabled.
+func localPathResolvable(target config.Target, gitRoot string) bool {
+	if !target.Enabled || target.LocalPath == "" {
+		return false
+	}
+	if filepath.IsAbs(config.ExpandPath(target.LocalPath)) {
+		return true
+	}
+	return gitRoot != ""
 }
 
 func appendLocalInstallPaths(paths []InstallPath, targets map[string]config.Target, gitRoot string) []InstallPath {
@@ -342,17 +390,22 @@ func getInstallPaths(targetName, scope string) ([]InstallPath, error) {
 			}
 		}
 
-		// Check local targets
-		if includeLocal && localGitRoot != "" {
+		// Check local targets. We always run this branch (even when no git
+		// root is available) so absolute localPath values can still resolve,
+		// but `appendLocalInstallPath` silently skips targets whose
+		// `localPath` is relative without a git root. We therefore use
+		// `localPathResolvable` here so we only mark the target as `found`
+		// when we actually added a path.
+		if includeLocal {
 			if localConfigExists && localCfg != nil {
-				if target, ok := localCfg.Targets[targetName]; ok && target.Enabled && target.LocalPath != "" {
+				if target, ok := localCfg.Targets[targetName]; ok && localPathResolvable(target, localGitRoot) {
 					paths = appendLocalInstallPath(paths, targetName, target, localGitRoot)
 					found = true
 				}
 			}
 			if !found {
 				target, ok := globalCfg.Targets[targetName]
-				if ok && target.Enabled && target.LocalPath != "" {
+				if ok && localPathResolvable(target, localGitRoot) {
 					paths = appendLocalInstallPath(paths, targetName, target, localGitRoot)
 					found = true
 				}
@@ -360,6 +413,19 @@ func getInstallPaths(targetName, scope string) ([]InstallPath, error) {
 		}
 
 		if !found {
+			// If the user asked for local scope and the target IS configured
+			// and enabled with a localPath, the only reason we did not match
+			// it is that the cwd is not inside a git repository (required to
+			// resolve a relative localPath). Surface that explicitly so the
+			// user knows what to fix.
+			if includeLocal && localGitRoot == "" {
+				if _, ok := localTargetConfigured(targetName, localCfg, localConfigExists, globalCfg); ok {
+					return nil, fmt.Errorf(
+						"target %q is configured for local scope, but the current directory is not inside a git repository (relative local target paths are resolved relative to the git root). Run this command from inside a git repository, set the target's localPath to an absolute path, or use -s global for global scope",
+						targetName,
+					)
+				}
+			}
 			return nil, fmt.Errorf("target %q not found or not enabled for scope %q", targetName, scope)
 		}
 	} else {
@@ -374,10 +440,8 @@ func getInstallPaths(targetName, scope string) ([]InstallPath, error) {
 		}
 
 		if includeLocal {
-			if localGitRoot != "" {
-				localTargets := localTargetsForScope(globalCfg.Targets, localCfg, localConfigExists)
-				paths = appendLocalInstallPaths(paths, localTargets, localGitRoot)
-			}
+			localTargets := localTargetsForScope(globalCfg.Targets, localCfg, localConfigExists)
+			paths = appendLocalInstallPaths(paths, localTargets, localGitRoot)
 		}
 	}
 
@@ -670,7 +734,19 @@ func appendGlobalRemovePaths(paths []RemovePath, targetName string, target confi
 }
 
 func appendLocalRemovePath(paths []RemovePath, targetName string, target config.Target, gitRoot string) []RemovePath {
-	if !target.Enabled || target.LocalPath == "" || gitRoot == "" {
+	if !target.Enabled || target.LocalPath == "" {
+		return paths
+	}
+	// Absolute local paths are self-locating; they don't need a git root.
+	expanded := config.ExpandPath(target.LocalPath)
+	if filepath.IsAbs(expanded) {
+		return append(paths, RemovePath{
+			Path:  filepath.Clean(expanded),
+			Label: fmt.Sprintf("%s (local)", targetName),
+		})
+	}
+	// Relative local paths require a git root for resolution.
+	if gitRoot == "" {
 		return paths
 	}
 	return append(paths, RemovePath{
@@ -715,15 +791,21 @@ func getRemovePaths(targetName, scope string) []RemovePath {
 			}
 		}
 
-		if includeLocal && localGitRoot != "" {
-			localFound := false
+		// Check local targets. We always run this branch (even when no git
+		// root is available) so absolute localPath values can still resolve;
+		// `appendLocalRemovePath` silently skips targets whose localPath is
+		// relative without a git root. We use `localPathResolvable` so a
+		// local-only entry that is configured but unusable in this cwd
+		// still falls back to the global config (matching install behavior).
+		if includeLocal {
+			localResolved := false
 			if localConfigExists && localCfg != nil {
-				if target, ok := localCfg.Targets[targetName]; ok && target.Enabled {
+				if target, ok := localCfg.Targets[targetName]; ok && localPathResolvable(target, localGitRoot) {
 					paths = appendLocalRemovePath(paths, targetName, target, localGitRoot)
-					localFound = true
+					localResolved = true
 				}
 			}
-			if !localFound {
+			if !localResolved {
 				target, ok := globalCfg.Targets[targetName]
 				if ok && target.Enabled {
 					paths = appendLocalRemovePath(paths, targetName, target, localGitRoot)
@@ -742,10 +824,8 @@ func getRemovePaths(targetName, scope string) []RemovePath {
 		}
 
 		if includeLocal {
-			if localGitRoot != "" {
-				localTargets := localTargetsForScope(globalCfg.Targets, localCfg, localConfigExists)
-				paths = appendLocalRemovePaths(paths, localTargets, localGitRoot)
-			}
+			localTargets := localTargetsForScope(globalCfg.Targets, localCfg, localConfigExists)
+			paths = appendLocalRemovePaths(paths, localTargets, localGitRoot)
 		}
 	}
 

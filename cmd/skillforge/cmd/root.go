@@ -92,7 +92,7 @@ Supports multiple agents via extensible target system with auto-detect config sc
 ═══════════════════════════════════════════════════════════════════════════════
 
   repo    Manage cached skill repositories (add, list, update, remove)
-  skill   Manage installed skills (install, list, search, update, remove)
+  skill   Manage installed skills (install, list, load, search, update, remove)
   sync    Sync repositories + update skills + sync across agents
   target  Manage skill target directories for agents
   setup   Interactive wizard to configure skill directories

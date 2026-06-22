@@ -100,8 +100,8 @@ func InstallSkillWithProgress(skill grimoire.Skill, targetPath string, commit st
 	return nil
 }
 
-// copyDir copies a directory recursively.
-func copyDir(src, dst string) error {
+// CopyDir copies a directory recursively.
+func CopyDir(src, dst string) error {
 	return copyDirWithProgress(src, dst, nil)
 }
 

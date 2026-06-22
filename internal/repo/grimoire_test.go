@@ -683,8 +683,8 @@ func TestCopyDir(t *testing.T) {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 
-	if err := copyDir(src, dst); err != nil {
-		t.Fatalf("copyDir() error = %v", err)
+	if err := CopyDir(src, dst); err != nil {
+		t.Fatalf("CopyDir() error = %v", err)
 	}
 
 	// Verify files exist
