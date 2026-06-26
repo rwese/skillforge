@@ -18,6 +18,7 @@ many agents, symlinks only.
 | Add a skill repo | `skillforge repo add <url> [-b branch] [--alias name]` |
 | Search skills | `skillforge skill search <query>` |
 | **Load a skill into a temp dir** | `skillforge skill load <name>` |
+| **Export a skill to a new directory** | `skillforge skill export <name> <destination>` |
 
 ## Install
 
@@ -69,3 +70,27 @@ skillforge skill load docker
 # # docker
 # ...
 ```
+
+## Export a skill
+
+`skill export <name> <destination>` copies a cached skill into a NEW
+directory at `<destination>`. Use it when you want to materialize a
+skill into a specific path for sharing, hand-off, or inspection.
+
+The destination must not already exist (as a file, directory, or
+symlink); if it does, the command refuses to overwrite or merge.
+Missing parent directories along the destination path are created.
+The skill's files land directly under `<destination>` — no skill-name
+wrapper subdirectory is created.
+
+```bash
+skillforge skill export docker /tmp/docker-skill
+# Exported docker to /tmp/docker-skill
+
+ls /tmp/docker-skill
+# SKILL.md   extras.md   ...
+```
+
+Nested skill names (`architecture/event-sourced-commands`) export
+their source files directly under the destination; the slash-joined
+name is the internal skill identifier only.

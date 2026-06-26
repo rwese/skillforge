@@ -29,6 +29,8 @@ func init() {
 	skillCmd.AddCommand(skillListCmd)
 	skillCmd.AddCommand(skillRemoveCmd)
 	skillCmd.AddCommand(skillSearchCmd)
+	// skillExportCmd and skillLoadCmd register themselves in their
+	// own init() functions (see skill_export.go, skill_load.go).
 }
 
 var (

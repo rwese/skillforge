@@ -79,7 +79,9 @@ skillforge repo update [-c] [name]       # Update (use -c to check only)
 skillforge skill install <name> [-t target]  # Install skill
 skillforge skill list [-t target] [-f json]  # List installed skills
 skillforge skill remove <name> [-t target]   # Remove skill
-skillforge skill search <query> [-f json]     # Search skills
+skillforge skill search <query> [-f json]    # Search skills
+skillforge skill load <name>                 # Copy a cached skill into a temp dir
+skillforge skill export <name> <dest>        # Copy a cached skill into a new directory
 skillforge sync [--diff]                     # Fetch repos and check agent sync
 skillforge sync --fix-sync-repos             # Update cached repos
 skillforge sync --fix-outofsync-agents       # Link missing agent skills

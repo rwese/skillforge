@@ -19,6 +19,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   advance a stale cache to the latest remote tip.
 
 ### Added
+- `skill export <name> <destination>` copies a cached skill into a
+  NEW directory the caller specifies. The destination must not
+  already exist (file, directory, symlink, or broken symlink); if
+  it does, the command refuses to overwrite or merge. Missing
+  parent directories along the destination path are created. The
+  skill's files land directly under `<destination>`; no
+  skill-name wrapper subdirectory is created. Nested skill names
+  like `architecture/event-sourced-commands` resolve to the same
+  on-disk skill and export with their source files directly under
+  the destination. Useful for materializing a skill into a chosen
+  path for sharing, hand-off, or inspection. The export never
+  carries a `.grimoire` marker (install metadata is local-only).
 - `skill load <name>` copies a cached skill into a fresh temp
   directory and prints its `SKILL.md`. The temp dir is laid out as
   `/tmp/skillforge-<hash>/<skill-name>/` where `<hash>` is the first
