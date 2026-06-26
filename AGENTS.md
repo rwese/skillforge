@@ -61,7 +61,23 @@ skillforge/
 - Branches: `feat/<name>`, `fix/<name>`.
 - Commits: Conventional Commits.
 - Release tags: `v{major}.{minor}.{patch}` only, for example `v0.10.0`.
-- PRs: squash-merge to `main`.
+- PRs: full merge into `main` — **no squash, no rebase**. The
+  feature branch's commit history is preserved on `main` so each
+  commit can be inspected, reverted individually, or cited in
+  follow-ups.
+- After a PR is fully approved, merge the branch into `main`
+  (e.g. `gh pr merge --merge` on the remote, or
+  `git switch main && git merge --no-ff <branch>` locally).
+  Then verify on `main`:
+  - All feature-branch commits landed (`git log --oneline
+    origin/<branch>..main` shows nothing, `git log main..origin/<branch>`
+    shows nothing).
+  - No unresolved conflicts (working tree clean, no merge
+    markers anywhere).
+  - `main` is up to date with the merged branch
+    (`git log --oneline -1` matches the expected tip).
+  After verification, end on `main` with a clean working tree.
+  Do NOT leave the agent on the feature branch.
 
 ## Publishing / Release
 
