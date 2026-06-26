@@ -86,6 +86,10 @@ publishing). Short version:
 - Respect pre-commit hooks and fix their root causes.
 - Build and test after config-related changes.
 - Run `go build` before committing.
+- Get a positive review from the `reviewer` subagent on the staged
+  diff before committing. Warnings raised by the reviewer MUST be
+  addressed or explicitly justified in the commit body before the
+  commit is made.
 
 **USUALLY / ASK FIRST**
 
