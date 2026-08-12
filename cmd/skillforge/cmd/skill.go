@@ -58,9 +58,6 @@ var skillInstallCmd = &cobra.Command{
 }
 
 func runSkillInstall(cmd *cobra.Command, args []string) error {
-	// Determine installation scope
-	isGlobalScope := scopeFlag == "global"
-
 	// Determine paths to install to (default is local scope)
 	installPaths, err := getInstallPaths(targetFlag, scopeFlag)
 	if err != nil {
@@ -72,32 +69,19 @@ func runSkillInstall(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("no install paths found")
 	}
 
-	// Load local repos first, then global repos
-	localLoader := config.NewLoader(config.ScopeLocal)
-	localCfg, _ := localLoader.Load()
-	localRepoNames := make(map[string]bool)
-	if localCfg != nil {
-		for repoName := range localCfg.Repos {
-			localRepoNames[repoName] = true
-		}
-	}
-
-	// Load global repos
-	globalLoader := config.NewLoader(config.ScopeGlobal)
-	globalCfg, err := globalLoader.Load()
+	// The installation source is always the local scope: skills are
+	// looked up in the local scope's repos first and fall back to the
+	// global scope's repos. The --scope flag only selects the install
+	// targets (getInstallPaths above), not the source.
+	globalCfg, err := config.NewLoader(config.ScopeGlobal).Load()
 	if err != nil {
 		return err
 	}
+	localCfg, _ := config.NewLoader(config.ScopeLocal).Load()
 
-	// Merge: local repos first, then global (local takes precedence)
-	allRepos := make(map[string]config.RepoInfo)
-	for repoName, info := range globalCfg.Repos {
-		allRepos[repoName] = info
-	}
+	localRepos := make(map[string]config.RepoInfo)
 	if localCfg != nil {
-		for repoName, info := range localCfg.Repos {
-			allRepos[repoName] = info
-		}
+		localRepos = localCfg.Repos
 	}
 
 	// Cache is a single shared directory: use the effective cache path
@@ -115,74 +99,7 @@ func runSkillInstall(cmd *cobra.Command, args []string) error {
 	for _, skillName := range args {
 		fmt.Printf("\n=== Installing %s ===\n", skillName)
 
-		// Find the skill across all repos (local first, then global)
-		var targetSkill *grimoire.Skill
-
-		// Search repos matching target scope first, then fall back to other scope
-		preferredRepos := make(map[string]config.RepoInfo)
-		fallbackRepos := make(map[string]config.RepoInfo)
-
-		if isGlobalScope {
-			preferredRepos = globalCfg.Repos
-			fallbackRepos = make(map[string]config.RepoInfo)
-			if localCfg != nil {
-				fallbackRepos = localCfg.Repos
-			}
-		} else {
-			if localCfg != nil {
-				preferredRepos = localCfg.Repos
-			}
-			fallbackRepos = globalCfg.Repos
-		}
-
-		// Search preferred scope first
-		for repoName, info := range preferredRepos {
-			if !cache.Exists(repoName) {
-				continue
-			}
-
-			skills, err := repo.DiscoverSkills(cache.PathFor(repoName), info.URL)
-			if err != nil {
-				continue
-			}
-
-			for i := range skills {
-				if skills[i].Name == skillName {
-					targetSkill = &skills[i]
-					break
-				}
-			}
-
-			if targetSkill != nil {
-				break
-			}
-		}
-
-		// Fall back to other scope if not found
-		if targetSkill == nil {
-			for repoName, info := range fallbackRepos {
-				if !cache.Exists(repoName) {
-					continue
-				}
-
-				skills, err := repo.DiscoverSkills(cache.PathFor(repoName), info.URL)
-				if err != nil {
-					continue
-				}
-
-				for i := range skills {
-					if skills[i].Name == skillName {
-						targetSkill = &skills[i]
-						break
-					}
-				}
-
-				if targetSkill != nil {
-					break
-				}
-			}
-		}
-
+		targetSkill := findSkillInRepos(localRepos, globalCfg.Repos, cache, skillName)
 		if targetSkill == nil {
 			err := fmt.Errorf("skill %q not found in any cached repository", skillName)
 			PrintHint(HintRepoNotCached)
@@ -228,6 +145,38 @@ func runSkillInstall(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("%d skill(s) failed to install", len(errors))
 	}
 
+	return nil
+}
+
+// findSkillInRepos returns the first skill matching skillName found in
+// any cached repository. Local-scope repos are searched first, so a
+// skill provided by both scopes is always sourced from the local scope;
+// global repos are the fallback. Returns nil if no cached repo provides
+// the skill. Within one scope, repos are searched in map order.
+func findSkillInRepos(localRepos, globalRepos map[string]config.RepoInfo, cache *repo.Cache, skillName string) *grimoire.Skill {
+	if skill := searchReposForSkill(localRepos, cache, skillName); skill != nil {
+		return skill
+	}
+	return searchReposForSkill(globalRepos, cache, skillName)
+}
+
+func searchReposForSkill(repos map[string]config.RepoInfo, cache *repo.Cache, skillName string) *grimoire.Skill {
+	for repoName, info := range repos {
+		if !cache.Exists(repoName) {
+			continue
+		}
+
+		skills, err := repo.DiscoverSkills(cache.PathFor(repoName), info.URL)
+		if err != nil {
+			continue
+		}
+
+		for i := range skills {
+			if skills[i].Name == skillName {
+				return &skills[i]
+			}
+		}
+	}
 	return nil
 }
 
@@ -886,12 +835,6 @@ func runSkillSearch(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	cache := repo.NewCache(config.ExpandPath(cachePath))
-
-	// Track local repos for display
-	localRepoNames := make(map[string]bool)
-	for repoName := range cfg.Repos {
-		localRepoNames[repoName] = true
-	}
 
 	// Collect all skills from all repos (local first, then global)
 	skillSets := make(map[string][]grimoire.Skill)
