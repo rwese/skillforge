@@ -98,7 +98,6 @@ publishing). Short version:
 
 **ALWAYS**
 
-- Use absolute paths in agent responses.
 - Respect pre-commit hooks and fix their root causes.
 - Build and test after config-related changes.
 - Run `go build` before committing.
