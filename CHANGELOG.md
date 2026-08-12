@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- `repo add` now checks for duplicates per config scope instead of per
+  on-disk cache: adding a repository to the local scope that is already
+  registered in the global scope is valid (and vice versa). The existing
+  shared cache entry is reused instead of cloning again. A same-name
+  cache entry cloned from a different URL is never reused; the command
+  fails with a hint to remove the conflicting entry first.
+- `skill install` always sources skills from the local scope's
+  repositories first (falling back to the global scope); the `--scope`
+  flag now only selects the install targets, not the source.
 - `repo.Pull` now fast-forwards the local cache branch to
   `origin/<branch>` via `git reset --hard` instead of plain
   `git pull`. The cache is a shallow clone and `Fetch` uses

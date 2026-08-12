@@ -125,6 +125,13 @@ By default, skillforge auto-detects config scope:
 - Local config in git repos takes precedence over global
 - Help text shows detected scope when not auto
 
+Repositories can be registered in both scopes: adding a repository to
+the local scope that is already registered globally is valid (the shared
+cache entry is reused, no re-clone). Skill installation always sources
+from the local scope's repositories first, falling back to the global
+scope; `--scope` only selects where skills are installed, not where they
+come from.
+
 ## Output Formats
 
 All list commands support `-f json` for JSON output:

@@ -168,6 +168,20 @@ func (c *Cache) Exists(name string) bool {
 	return err == nil
 }
 
+// Origin returns the remote origin URL of a cached repository.
+// Returns an error when the cache entry has no origin (e.g. a
+// hand-seeded directory), in which case callers should treat the
+// entry as reusable rather than blame the URL.
+func (c *Cache) Origin(name string) (string, error) {
+	targetDir := filepath.Join(c.Path, name)
+	cmd := exec.Command("git", "-C", targetDir, "config", "--get", "remote.origin.url")
+	out, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
 // Path returns the full path to a cached repository.
 func (c *Cache) PathFor(name string) string {
 	return filepath.Join(c.Path, name)

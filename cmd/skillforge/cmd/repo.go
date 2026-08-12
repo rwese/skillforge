@@ -53,7 +53,19 @@ func runRepoAdd(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	cachePath, err := config.NewLoader(parseScope(scopeFlag)).EffectiveCachePath()
+	scope := parseScope(scopeFlag)
+	name := repoName(url)
+
+	// Scopes have independent repo lists: adding a repository to the
+	// local scope that is already registered in the global scope is
+	// valid (and vice versa). Only a duplicate within the same scope
+	// is an error.
+	if _, exists := cfg.Repos[name]; exists {
+		PrintHint(HintRepoExists)
+		return fmt.Errorf("repository %q already exists in the %s scope (use 'repo update' to refresh)", name, scope)
+	}
+
+	cachePath, err := config.NewLoader(scope).EffectiveCachePath()
 	if err != nil {
 		return err
 	}
@@ -62,24 +74,40 @@ func runRepoAdd(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Determine repo name
-	name := repoName(url)
-
-	// Check if already cached
+	// The on-disk cache is shared across scopes, so the repository may
+	// already be cached (e.g. from the global scope). Reuse it instead
+	// of cloning again; the config entry is still added to this scope.
+	// A same-name cache entry cloned from a DIFFERENT URL is never
+	// reused: silently linking the wrong content would be worse than
+	// asking the user to resolve the name clash.
 	if cache.Exists(name) {
-		PrintHint(HintRepoExists)
-		return fmt.Errorf("repository %q already cached (use 'repo update' to refresh)", name)
-	}
-
-	// Clone with spinner
-	spinner := NewSpinner(fmt.Sprintf("Cloning %s (branch: %s)...", url, branchFlag))
-	spinner.Start()
-	if err := cache.Clone(url, branchFlag); err != nil {
+		if origin, err := cache.Origin(name); err == nil && origin != url {
+			// Point the hint at the scope that owns the conflicting
+			// entry, so `repo remove` actually finds it.
+			removeHint := fmt.Sprintf("repo remove %s", name)
+			otherScope := config.ScopeGlobal
+			if scope == config.ScopeGlobal {
+				otherScope = config.ScopeLocal
+			}
+			if otherCfg, err := config.NewLoader(otherScope).Load(); err == nil {
+				if _, ok := otherCfg.Repos[name]; ok {
+					removeHint = fmt.Sprintf("repo remove %s -s %s", name, otherScope)
+				}
+			}
+			return fmt.Errorf("repository %q is already cached from a different URL (%s); remove it first: %s", name, origin, removeHint)
+		}
+		fmt.Printf("✓ %s already cached\n", name)
+	} else {
+		// Clone with spinner
+		spinner := NewSpinner(fmt.Sprintf("Cloning %s (branch: %s)...", url, branchFlag))
+		spinner.Start()
+		if err := cache.Clone(url, branchFlag); err != nil {
+			spinner.Stop()
+			return fmt.Errorf("failed to clone: %w", err)
+		}
 		spinner.Stop()
-		return fmt.Errorf("failed to clone: %w", err)
+		fmt.Printf("✓ Cloned %s\n", url)
 	}
-	spinner.Stop()
-	fmt.Printf("✓ Cloned %s\n", url)
 
 	// Get commit
 	commit, err := cache.GetCommit(name)
