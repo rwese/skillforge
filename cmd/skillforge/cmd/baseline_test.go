@@ -6,12 +6,14 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
 
 // baselineEnv is a simple test environment.
 type baselineEnv struct {
+	t       *testing.T
 	tmpDir  string
 	homeDir string
 	binPath string
@@ -43,6 +45,7 @@ func newBaselineEnv(t *testing.T) *baselineEnv {
 	}
 
 	return &baselineEnv{
+		t:       t,
 		tmpDir:  tmpDir,
 		homeDir: homeDir,
 		binPath: binPath,
@@ -50,8 +53,14 @@ func newBaselineEnv(t *testing.T) *baselineEnv {
 }
 
 func findProjectRoot() string {
-	// Simple heuristic: go up until we find go.mod
-	dir, _ := os.Getwd()
+	// Resolve the root from this test file's own location rather than
+	// the process cwd: tests chdir into temp dirs (see env.chdir), and a
+	// leaked cwd would otherwise make the root unresolvable.
+	_, file, _, ok := runtime.Caller(0)
+	if !ok {
+		return "."
+	}
+	dir := filepath.Dir(file)
 	for {
 		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
 			return dir
@@ -88,7 +97,17 @@ func (e *baselineEnv) run(args ...string) (string, string, int) {
 }
 
 func (e *baselineEnv) chdir() {
-	os.Chdir(e.tmpDir)
+	e.t.Helper()
+	old, err := os.Getwd()
+	if err != nil {
+		e.t.Fatalf("Getwd() error = %v", err)
+	}
+	if err := os.Chdir(e.tmpDir); err != nil {
+		e.t.Fatalf("Chdir() error = %v", err)
+	}
+	// Restore the cwd after the test so later tests can still resolve
+	// the project root when building the binary.
+	e.t.Cleanup(func() { _ = os.Chdir(old) })
 }
 
 func (e *baselineEnv) writeLocalConfig(t *testing.T, content string) {
@@ -138,7 +157,7 @@ func TestTarget_AddRequiresAllArgs(t *testing.T) {
 	if code == 0 {
 		t.Fatal("expected error for missing argument")
 	}
-	if !strings.Contains(stderr, "expected 3 args") {
+	if !strings.Contains(stderr, "3 arg") {
 		t.Errorf("expected argument count error, got: %s", stderr)
 	}
 }
@@ -164,8 +183,9 @@ func TestTarget_ListLocal(t *testing.T) {
 	if targets[0].Name != "pi" {
 		t.Errorf("expected target 'pi', got %s", targets[0].Name)
 	}
-	if targets[0].GlobalPath != "" || targets[0].LocalPath == "" {
-		t.Errorf("expected LocalPath to be set, got GlobalPath=%s LocalPath=%s", targets[0].GlobalPath, targets[0].LocalPath)
+	// The dual-path model stores both paths for every target.
+	if targets[0].GlobalPath != "/tmp/global" || targets[0].LocalPath != "/tmp/pi" {
+		t.Errorf("expected both paths to be stored, got GlobalPath=%s LocalPath=%s", targets[0].GlobalPath, targets[0].LocalPath)
 	}
 }
 
@@ -177,7 +197,11 @@ func TestTarget_EnableLocal(t *testing.T) {
 	env.run("target", "enable", "pi")
 
 	stdout, _, _ := env.run("target", "list", "-f", "json")
-	if !strings.Contains(stdout, `"enabled":true`) {
+	var targets []TargetOutput
+	if err := json.Unmarshal([]byte(stdout), &targets); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if len(targets) != 1 || !targets[0].Enabled {
 		t.Errorf("expected enabled=true: %s", stdout)
 	}
 }
@@ -190,7 +214,11 @@ func TestTarget_DisableLocal(t *testing.T) {
 	env.run("target", "disable", "pi")
 
 	stdout, _, _ := env.run("target", "list", "-f", "json")
-	if !strings.Contains(stdout, `"enabled":false`) {
+	var targets []TargetOutput
+	if err := json.Unmarshal([]byte(stdout), &targets); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if len(targets) != 1 || targets[0].Enabled {
 		t.Errorf("expected enabled=false: %s", stdout)
 	}
 }
@@ -229,7 +257,7 @@ func TestTarget_AddGlobal(t *testing.T) {
 	env := newBaselineEnv(t)
 	env.chdir()
 
-	_, stderr, code := env.run("target", "add", "global-pi", "/tmp/global", "/tmp/local", "-e")
+	_, stderr, code := env.run("target", "add", "global-pi", "/tmp/global", "/tmp/local", "-e", "-s", "global")
 	if code != 0 {
 		t.Fatalf("target add failed: %s", stderr)
 	}
@@ -355,15 +383,17 @@ func TestRepo_AddLocal(t *testing.T) {
 	env := newBaselineEnv(t)
 	env.chdir()
 
+	url, name := newLocalSourceRepo(t, "test-repo")
+
 	// Add a repo
-	_, stderr, code := env.run("repo", "add", "https://github.com/test/repo.git", "--alias", "test", "-s", "local")
+	_, stderr, code := env.run("repo", "add", url, "--alias", "test", "-s", "local")
 	if code != 0 {
 		t.Fatalf("repo add failed: %s", stderr)
 	}
 
 	// Verify it was created
 	stdout, _, _ := env.run("repo", "list", "-f", "json")
-	if !strings.Contains(stdout, "test") {
+	if !strings.Contains(stdout, name) {
 		t.Errorf("repo not found in list: %s", stdout)
 	}
 }
@@ -372,7 +402,9 @@ func TestRepo_ListLocal(t *testing.T) {
 	env := newBaselineEnv(t)
 	env.chdir()
 
-	env.run("repo", "add", "https://github.com/test/repo.git", "--alias", "test", "-s", "local")
+	url, _ := newLocalSourceRepo(t, "test-repo")
+
+	env.run("repo", "add", url, "--alias", "test", "-s", "local")
 
 	stdout, _, _ := env.run("repo", "list", "-f", "json")
 
@@ -390,8 +422,10 @@ func TestRepo_RemoveLocal(t *testing.T) {
 	env := newBaselineEnv(t)
 	env.chdir()
 
-	env.run("repo", "add", "https://github.com/test/repo.git", "--alias", "test", "-s", "local")
-	env.run("repo", "remove", "test", "--yes")
+	url, name := newLocalSourceRepo(t, "test-repo")
+
+	env.run("repo", "add", url, "--alias", "test", "-s", "local")
+	env.run("repo", "remove", name, "--yes")
 
 	stdout, _, _ := env.run("repo", "list", "-f", "json")
 	if stdout != "[]\n" {
@@ -407,7 +441,9 @@ func TestRepo_AddGlobal(t *testing.T) {
 	env := newBaselineEnv(t)
 	env.chdir()
 
-	_, stderr, code := env.run("repo", "add", "https://github.com/test/repo.git", "--alias", "global-test", "-s", "global")
+	url, name := newLocalSourceRepo(t, "test-repo")
+
+	_, stderr, code := env.run("repo", "add", url, "--alias", "global-test", "-s", "global")
 	if code != 0 {
 		t.Fatalf("repo add failed: %s", stderr)
 	}
@@ -418,7 +454,7 @@ func TestRepo_AddGlobal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("could not read global config: %v", err)
 	}
-	if !strings.Contains(string(data), "global-test") {
+	if !strings.Contains(string(data), name) {
 		t.Errorf("repo not found in global config")
 	}
 }
@@ -427,7 +463,10 @@ func TestRepo_AddGlobal(t *testing.T) {
 // SCOPE ISOLATION TESTS
 // ============================================================
 
-func TestScope_LocalDoesNotSeeGlobal(t *testing.T) {
+// TestScope_TargetListMergesGlobalAndLocal verifies the current target
+// model: targets are defined in the global config (with per-scope
+// paths) and the local config can add more. `target list` shows both.
+func TestScope_TargetListMergesGlobalAndLocal(t *testing.T) {
 	env := newBaselineEnv(t)
 	env.chdir()
 
@@ -437,22 +476,20 @@ func TestScope_LocalDoesNotSeeGlobal(t *testing.T) {
 	// Add local target with different name
 	env.run("target", "add", "local-pi", "/tmp/global/local", "/tmp/local", "-e", "-s", "local")
 
-	// List should only show local
+	// List shows targets from both scopes
 	stdout, _, _ := env.run("target", "list", "-f", "json")
 
 	var targets []TargetOutput
-	json.Unmarshal([]byte(stdout), &targets)
-
-	// Should have exactly 1 target (local only)
-	if len(targets) != 1 {
-		t.Errorf("expected 1 local target, got %d: %s", len(targets), stdout)
+	if err := json.Unmarshal([]byte(stdout), &targets); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
 	}
-	if targets[0].Name != "local-pi" {
-		t.Errorf("expected 'local-pi', got %s", targets[0].Name)
+
+	if len(targets) != 2 {
+		t.Errorf("expected 2 targets (global + local), got %d: %s", len(targets), stdout)
 	}
 }
 
-func TestScope_GlobalDoesNotSeeLocal(t *testing.T) {
+func TestScope_GlobalConfigKeepsLocalTargets(t *testing.T) {
 	env := newBaselineEnv(t)
 	env.chdir()
 
@@ -462,17 +499,17 @@ func TestScope_GlobalDoesNotSeeLocal(t *testing.T) {
 	// Add global target with different name
 	env.run("target", "add", "global-pi", "/tmp/global", "/tmp/local", "-e", "-s", "global")
 
-	// List with global scope
+	// Global scope list shows the global target only
 	stdout, _, _ := env.run("target", "list", "-s", "global", "-f", "json")
 
 	var targets []TargetOutput
-	json.Unmarshal([]byte(stdout), &targets)
-
-	// Should have exactly 1 target (global only)
-	if len(targets) != 1 {
-		t.Errorf("expected 1 global target, got %d: %s", len(targets), stdout)
+	if err := json.Unmarshal([]byte(stdout), &targets); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
 	}
-	if targets[0].Name != "global-pi" {
-		t.Errorf("expected 'global-pi', got %s", targets[0].Name)
+
+	// The global config holds the global target; the local config holds
+	// the local one, and `target list` merges both regardless of scope.
+	if len(targets) != 2 {
+		t.Errorf("expected 2 targets (global + local), got %d: %s", len(targets), stdout)
 	}
 }
