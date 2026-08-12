@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.12.0] - 2026-08-12
+
 ### Fixed
 - `repo add` now checks for duplicates per config scope instead of per
   on-disk cache: adding a repository to the local scope that is already

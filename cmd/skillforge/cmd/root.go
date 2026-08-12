@@ -161,7 +161,7 @@ Run "$0 [command] --help" for more details on a specific command.`
 // cobra-managed `--version` flag (rootCmd.Version below). Bump on
 // each tagged release; the tag is the source of truth and this
 // string should be kept in sync at tag time.
-const Version = "v0.11.0"
+const Version = "v0.12.0"
 
 // rootCmd represents the base command.
 var rootCmd = &cobra.Command{
